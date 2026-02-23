@@ -18,3 +18,22 @@ help:
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
 %: Makefile
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
+
+# Push your branch with these files:
+# docs.yml
+# requirements.txt
+# docs updates
+# In GitHub repo:
+# Settings → Pages
+# Under Build and deployment, set Source to GitHub Actions
+# Save
+# Merge/push to main (workflow is configured for main pushes), or run manually:
+# Actions → Docs → Run workflow
+# Wait for both jobs in Docs workflow:
+# build
+# deploy
+# Open deployed site:
+# https://<your-username>.github.io/<repo-name>/
+# Or use the URL shown in the deploy job output (page_url).
+# If you want it to deploy from every branch push, I can adjust docs.yml trigger from main to *.
