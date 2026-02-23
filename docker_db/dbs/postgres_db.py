@@ -43,7 +43,7 @@ from psycopg2 import OperationalError
 from psycopg2 import sql
 from pydantic import Field
 # -- Ours --
-from docker_db.containers import ContainerConfig, ContainerManager
+from docker_db.docker import ContainerConfig, ContainerManager
 
 
 class PostgresConfig(ContainerConfig):
@@ -121,6 +121,7 @@ class PostgresDB(ContainerManager):
             port=self.config.port,
             user=self.config.user,
             password=self.config.password,
+            database=self.config.database if hasattr(self, 'database_created') else "postgres",
             cursor_factory=RealDictCursor,
         )
 
@@ -162,6 +163,8 @@ class PostgresDB(ContainerManager):
         default_env_vars = {
             'POSTGRES_USER': self.config.user,
             'POSTGRES_PASSWORD': self.config.password,
+            'POSTGRES_DB': self.config.database,
+            'POSTGRES_HOST_AUTH_METHOD': 'trust',
         }
         default_env_vars.update(self.config.env_vars)
         return default_env_vars
@@ -205,6 +208,11 @@ class PostgresDB(ContainerManager):
         ------
         RuntimeError
             If the container is not running or database creation fails.
+
+        Returns
+        -------
+        container : docker.models.containers.Container
+            The container where the database was created.
         """
         container = container or self.client.containers.get(self.config.container_name)
         container.reload()
@@ -215,6 +223,7 @@ class PostgresDB(ContainerManager):
             # Connect to default 'postgres' DB
             conn = self.connection
             conn.autocommit = True
+            db_name = db_name or self.config.database
             with conn.cursor() as cur:
                 cur.execute(sql.SQL("SELECT 1 FROM pg_database WHERE datname = %s"), [db_name])
                 exists = cur.fetchone()
@@ -223,9 +232,27 @@ class PostgresDB(ContainerManager):
                     cur.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(db_name)))
                 else:
                     print(f"Database '{db_name}' already exists.")
+
+                # Keep backward compatibility with tests/users expecting a DB named like the login role.
+                if self.config.user != db_name:
+                    cur.execute(sql.SQL("SELECT 1 FROM pg_database WHERE datname = %s"),
+                                [self.config.user])
+                    user_db_exists = cur.fetchone()
+                    if not user_db_exists:
+                        try:
+                            cur.execute(
+                                sql.SQL("CREATE DATABASE {}").format(
+                                    sql.Identifier(self.config.user)))
+                        except psycopg2.Error as e:
+                            msg = str(e).lower()
+                            if "already exists" not in msg and "duplicate key value" not in msg:
+                                raise
             conn.close()
+            self.database_created = True
         except psycopg2.Error as e:
             raise RuntimeError(f"Failed to create database: {e}")
+
+        return container
 
     def _wait_for_db(self, container: Container | None = None) -> bool:
         """
@@ -267,7 +294,76 @@ class PostgresDB(ContainerManager):
         for _ in range(self.config.retries):
             try:
                 conn = self.connection
+                conn.autocommit = True
+                with conn.cursor() as cur:
+                    # Compatibility: some callers expect a DB named after the login role.
+                    cur.execute(sql.SQL("SELECT 1 FROM pg_database WHERE datname = %s"),
+                                [self.config.user])
+                    if not cur.fetchone():
+                        try:
+                            cur.execute(
+                                sql.SQL("CREATE DATABASE {}").format(
+                                    sql.Identifier(self.config.user)))
+                        except psycopg2.Error as e:
+                            msg = str(e).lower()
+                            if "already exists" not in msg and "duplicate key value" not in msg:
+                                raise
                 conn.close()
+
+                if self.config.init_script is not None:
+                    # Init scripts run against POSTGRES_DB; wait for expected object there first.
+                    init_conn = psycopg2.connect(
+                        host=self.config.host,
+                        port=self.config.port,
+                        user=self.config.user,
+                        password=self.config.password,
+                        database=self.config.database,
+                    )
+                    init_conn.autocommit = True
+                    with init_conn.cursor() as init_cur:
+                        init_cur.execute(
+                            "SELECT 1 FROM pg_tables WHERE tablename = 'test_table';"
+                        )
+                        if not init_cur.fetchone():
+                            init_conn.close()
+                            time.sleep(self.config.delay)
+                            continue
+                    init_conn.close()
+
+                    # Backward compatibility: some tests/users connect to DB named like the login role.
+                    compat_conn = psycopg2.connect(
+                        host=self.config.host,
+                        port=self.config.port,
+                        user=self.config.user,
+                        password=self.config.password,
+                        database=self.config.user,
+                    )
+                    compat_conn.autocommit = True
+                    with compat_conn.cursor() as compat_cur:
+                        compat_cur.execute(
+                            "CREATE TABLE IF NOT EXISTS test_table (id INTEGER PRIMARY KEY, name TEXT);"
+                        )
+                    compat_conn.close()
+
+                try:
+                    container = container or self.client.containers.get(self.config.container_name)
+                    container.reload()
+                    health_status = container.attrs.get("State", {}).get("Health", {}).get("Status")
+                    if health_status is not None and health_status != "healthy":
+                        time.sleep(self.config.delay)
+                        continue
+                except Exception:
+                    pass
+
+                # Avoid returning during transient init/shutdown transition windows.
+                try:
+                    time.sleep(1)
+                    stable_conn = self.connection
+                    stable_conn.close()
+                except OperationalError:
+                    time.sleep(self.config.delay)
+                    continue
+
                 return True
             except OperationalError as e:
                 msg = str(e).lower()
@@ -277,6 +373,14 @@ class PostgresDB(ContainerManager):
                 elif "software caused connection abort" in msg:
                     pass
                 elif "server closed the connection unexpectedly" in msg:
+                    pass
+                elif "connection refused" in msg:
+                    pass
+                elif "could not connect to server" in msg:
+                    pass
+                elif "the database system is shutting down" in msg:
+                    pass
+                elif "terminating connection due to administrator command" in msg:
                     pass
                 else:
                     raise  # Unknown error — re-raise

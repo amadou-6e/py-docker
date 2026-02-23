@@ -14,9 +14,23 @@ from docker.models.containers import Container
 from docker.models.images import Image
 from tests.conftest import *
 # -- Ours --
-from docker_db.mongo_db import MongoDBConfig, MongoDB
+from docker_db.dbs.mongo_db import MongoDBConfig, MongoDB
 # -- Tests --
 from .utils import nuke_dir, clear_port
+
+
+def _cleanup_test_mongo_containers():
+    client = docker.from_env()
+    for container in client.containers.list(all=True):
+        if container.name.startswith("test-mongo"):
+            try:
+                container.stop(timeout=5)
+            except docker.errors.APIError:
+                pass
+            try:
+                container.remove(force=True)
+            except docker.errors.APIError:
+                pass
 
 
 @pytest.fixture(scope="module")
@@ -42,19 +56,7 @@ def cleanup_test_containers():
     """
     yield  # let tests run
 
-    client = docker.from_env()
-    for container in client.containers.list(all=True):  # include stopped
-        name = container.name
-        if name.startswith("test-mongo"):
-            print(f"Cleaning up container: {name}")
-            try:
-                container.stop(timeout=5)
-            except docker.errors.APIError:
-                pass  # maybe already stopped
-            try:
-                container.remove(force=True)
-            except docker.errors.APIError as e:
-                print(f"Failed to remove container {name}: {e}")
+    _cleanup_test_mongo_containers()
 
 
 @pytest.fixture(autouse=True)
@@ -62,11 +64,13 @@ def cleanup_temp_dir():
     """
     Brutally clean TEMP_DIR before and after each test, cross-platform.
     """
+    _cleanup_test_mongo_containers()
     nuke_dir(TEMP_DIR)
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
     yield
 
+    _cleanup_test_mongo_containers()
     nuke_dir(TEMP_DIR)
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -80,6 +84,7 @@ def cleanup_temp_dir():
 def mongodb_config() -> MongoDBConfig:
     mongodata = Path(TEMP_DIR, "mongodata")
     mongodata.mkdir(parents=True, exist_ok=True)
+    mongo_workdir = Path(CONFIG_DIR, "mongodb")
 
     name = f"test-mongodb-{uuid.uuid4().hex[:8]}"
 
@@ -90,7 +95,8 @@ def mongodb_config() -> MongoDBConfig:
         root_username="root",
         root_password="RootPass123!",
         project_name="itest",
-        workdir=TEMP_DIR,
+        workdir=mongo_workdir,
+        volume_path=mongodata,
         container_name=name,
         retries=20,
         delay=5,
@@ -105,6 +111,7 @@ def mongodb_init_config(
 ) -> MongoDBConfig:
     mongodata = Path(TEMP_DIR, "mongodata")
     mongodata.mkdir(parents=True, exist_ok=True)
+    mongo_workdir = Path(CONFIG_DIR, "mongodb")
 
     name = f"test-mongodb-{uuid.uuid4().hex[:8]}"
 
@@ -115,7 +122,8 @@ def mongodb_init_config(
         root_username="root",
         root_password="RootPass123!",
         project_name="itest",
-        workdir=TEMP_DIR,
+        workdir=mongo_workdir,
+        volume_path=mongodata,
         init_script=init_script,
         dockerfile_path=dockerfile,
         container_name=name,
@@ -322,8 +330,9 @@ def test_create_container_inspects_config(
 
     # 4) healthcheck present
     hc = attrs["Config"].get("Healthcheck", {})
-    assert "CMD" in hc.get("Test", [])
-    assert "mongo" in " ".join(hc.get("Test", []))
+    test_tokens = hc.get("Test", [])
+    assert ("CMD" in test_tokens) or ("CMD-SHELL" in test_tokens)
+    assert "mongo" in " ".join(test_tokens)
 
     # cleanup
     container.remove(force=True)
@@ -337,14 +346,14 @@ def test_container_start_and_connect(
 ):
     # Ensure container starts and database is reachable
     Path(mongodb_init_config.volume_path).mkdir(parents=True, exist_ok=True)
-    mongodb_init_manager._start_container(mongodb_init_container)
+    container = mongodb_init_manager._start_container(mongodb_init_container)
     mongodb_init_manager.test_connection(), "MongoDB connection test failed"
 
     # Give MongoDB a moment to finish init
     time.sleep(10)
 
     # Need to make sure the database and user are properly set up
-    mongodb_init_manager._create_db(mongodb_init_config.database, mongodb_init_container)
+    mongodb_init_manager._create_db(mongodb_init_config.database, container)
 
     # Connect with root credentials to verify
     client = MongoClient(
@@ -438,6 +447,12 @@ def test_create_db(
     docker_file_path: Path | None,
     init_script_path: Path | None,
 ):
+    if image_name == "test-mongo-image" and docker_file_path is None:
+        pytest.skip("Local test image tag requires docker_file_path to build it.")
+
+    mongodata = Path(TEMP_DIR, "mongodata")
+    mongodata.mkdir(parents=True, exist_ok=True)
+    mongo_workdir = Path(CONFIG_DIR, "mongodb")
     name = f"test-mongo-{uuid.uuid4().hex[:8]}"
     config = MongoDBConfig(
         user="testuser",
@@ -449,7 +464,8 @@ def test_create_db(
         dockerfile_path=docker_file_path,
         init_script=init_script_path,
         image_name=image_name,
-        workdir=TEMP_DIR,
+        workdir=mongo_workdir,
+        volume_path=mongodata,
         container_name=name,
         retries=20,
         delay=5,
@@ -505,8 +521,12 @@ def test_delete_db(
     # Give MongoDB a moment to finish init
     time.sleep(5)
 
-    # Remove container
-    mongodb_init_manager.delete_db()
+    # By default running_ok=False, so deleting a running container should raise.
+    with pytest.raises(RuntimeError, match="still running"):
+        mongodb_init_manager.delete_db()
+
+    # Explicitly allow deletion of a running container.
+    mongodb_init_manager.delete_db(running_ok=True)
     docker_client = docker.from_env()
     conts = docker_client.containers.list(
         all=True,
@@ -518,6 +538,7 @@ def test_delete_db(
 if __name__ == "__main__":
     mongodata = Path(TEMP_DIR, "mongodata")
     mongodata.mkdir(parents=True, exist_ok=True)
+    mongo_workdir = Path(CONFIG_DIR, "mongodb")
 
     name = f"test-mongodb-{uuid.uuid4().hex[:8]}"
 
@@ -528,7 +549,8 @@ if __name__ == "__main__":
         root_username="root",
         root_password="RootPass123!",
         project_name="itest",
-        workdir=TEMP_DIR,
+        workdir=mongo_workdir,
+        volume_path=mongodata,
         container_name=name,
         retries=20,
         delay=1,

@@ -13,7 +13,7 @@ from docker.models.containers import Container
 from docker.models.images import Image
 from tests.conftest import *
 # -- Ours --
-from docker_db.postgres_db import PostgresConfig, PostgresDB
+from docker_db.dbs.postgres_db import PostgresConfig, PostgresDB
 # -- Tests --
 from .utils import nuke_dir, clear_port
 
@@ -36,8 +36,10 @@ def init_script():
 @pytest.fixture(autouse=True)
 def cleanup_temp_dir():
     """Clean up vault files using OS-agnostic commands."""
+    pgdata_root = Path(TEST_DIR, "data", "pgdata")
     nuke_dir(TEMP_DIR)
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
+    pgdata_root.mkdir(parents=True, exist_ok=True)
     yield
     nuke_dir(TEMP_DIR)
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -47,23 +49,31 @@ def cleanup_temp_dir():
 def cleanup_test_containers():
     """
     Automatically clean up containers whose names start with 'test-postgres'
-    at the end of the module.
+    before and at the end of the module.
     """
-    yield  # let tests run
-
     client = docker.from_env()
-    for container in client.containers.list(all=True):  # include stopped
-        name = container.name
-        if name.startswith("test-postgres"):
-            print(f"Cleaning up container: {name}")
-            try:
-                container.stop(timeout=5)
-            except docker.errors.APIError:
-                pass  # maybe already stopped
-            try:
-                container.remove(force=True)
-            except docker.errors.APIError as e:
-                print(f"Failed to remove container {name}: {e}")
+
+    pgdata_root = Path(TEST_DIR, "data", "pgdata")
+
+    def _cleanup():
+        for container in client.containers.list(all=True):  # include stopped
+            name = container.name
+            if name.startswith("test-postgres"):
+                print(f"Cleaning up container: {name}")
+                try:
+                    container.stop(timeout=5)
+                except docker.errors.APIError:
+                    pass  # maybe already stopped
+                try:
+                    container.remove(force=True)
+                except docker.errors.APIError as e:
+                    print(f"Failed to remove container {name}: {e}")
+        nuke_dir(pgdata_root)
+        pgdata_root.mkdir(parents=True, exist_ok=True)
+
+    _cleanup()
+    yield  # let tests run
+    _cleanup()
 
 
 @pytest.fixture
@@ -76,19 +86,20 @@ def clear_port_5432():
 # =======================================
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def postgres_config() -> PostgresConfig:
-    pgdata = Path(TEMP_DIR, "pgdata")
-    pgdata.mkdir(parents=True, exist_ok=True)
-
     name = f"test-postgres-{uuid.uuid4().hex[:8]}"
+    pgdata = Path(TEST_DIR, "data", "pgdata", name)
+    pgdata.mkdir(parents=True, exist_ok=True)
+    postgres_workdir = Path(CONFIG_DIR, "postgres")
 
     config = PostgresConfig(
         user="testuser",
         password="testpass",
         database="testdb",
         project_name="itest",
-        workdir=TEMP_DIR,
+        workdir=postgres_workdir,
+        volume_path=pgdata,
         container_name=name,
         retries=20,
         delay=5,
@@ -96,22 +107,23 @@ def postgres_config() -> PostgresConfig:
     return config
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def postgres_init_config(
     dockerfile: Path,
     init_script: Path,
 ) -> PostgresConfig:
-    pgdata = Path(TEMP_DIR, "pgdata")
-    pgdata.mkdir(parents=True, exist_ok=True)
-
     name = f"test-postgres-{uuid.uuid4().hex[:8]}"
+    pgdata = Path(TEST_DIR, "data", "pgdata", name)
+    pgdata.mkdir(parents=True, exist_ok=True)
+    postgres_workdir = Path(CONFIG_DIR, "postgres")
 
     config = PostgresConfig(
         user="testuser",
         password="testpass",
         database="testdb",
         project_name="itest",
-        workdir=TEMP_DIR,
+        workdir=postgres_workdir,
+        volume_path=pgdata,
         init_script=init_script,
         dockerfile_path=dockerfile,
         container_name=name,
@@ -126,13 +138,13 @@ def postgres_init_config(
 # =======================================
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def postgres_manager(postgres_config: PostgresConfig):
     manager = PostgresDB(postgres_config)
     yield manager
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def postgres_init_manager(postgres_init_config):
     """Fixture that provides a PostgresDockerManager instance with test config."""
     manager = PostgresDB(config=postgres_init_config)
@@ -396,7 +408,13 @@ def test_create_db(
     image_name: str | None,
     postgres_init_config: PostgresConfig,
 ):
+    if image_name == "test-postgres-image" and docker_file_path is None:
+        pytest.skip("Local test image tag requires docker_file_path to build it.")
+
     name = f"test-postgres-{uuid.uuid4().hex[:8]}"
+    pgdata = Path(TEST_DIR, "data", "pgdata", name)
+    pgdata.mkdir(parents=True, exist_ok=True)
+    postgres_workdir = Path(CONFIG_DIR, "postgres")
 
     config = PostgresConfig(
         user="testuser",
@@ -406,7 +424,8 @@ def test_create_db(
         dockerfile_path=docker_file_path,
         init_script=init_script_path,
         image_name=image_name,
-        workdir=TEMP_DIR,
+        workdir=postgres_workdir,
+        volume_path=pgdata,
         container_name=name,
         retries=20,
         delay=5,
@@ -522,6 +541,7 @@ def test_start_db_force(
     client = docker.from_env()
     container = client.containers.get(postgres_init_config.container_name)
     initial_container_id = container.id
+    initial_start_time = container.attrs.get('State', {}).get('StartedAt', '')
 
     # Start again with the specified force value
     f = io.StringIO()
@@ -536,9 +556,13 @@ def test_start_db_force(
 
     # Check if container was recreated based on force value
     if force:
-        assert new_container.id != initial_container_id, "Container should have been recreated"
+        assert new_container.id == initial_container_id, "Container should be restarted, not recreated"
+        assert new_container.attrs.get('State', {}).get('StartedAt', '') != initial_start_time, \
+            "Container should have been restarted"
     else:
         assert new_container.id == initial_container_id, "Container should not have been recreated"
+        assert new_container.attrs.get('State', {}).get('StartedAt', '') == initial_start_time, \
+            "Container should not have been restarted"
 
     # Verify we can connect
     postgres_init_manager.test_connection()
@@ -574,16 +598,12 @@ def test_delete_db(
     # Give Postgres a moment to finish init
     time.sleep(2)
 
-    conn = psycopg2.connect(
-        host=postgres_init_config.host,
-        port=postgres_init_config.port,
-        database=postgres_init_config.user,
-        user=postgres_init_config.user,
-        password=postgres_init_config.password,
-        cursor_factory=RealDictCursor,
-    )
-    # Remove container
-    postgres_init_manager.delete_db()
+    # By default running_ok=False, so deleting a running container should raise.
+    with pytest.raises(RuntimeError, match="still running"):
+        postgres_init_manager.delete_db()
+
+    # Explicitly allow deletion of a running container.
+    postgres_init_manager.delete_db(running_ok=True)
     client = docker.from_env()
     conts = client.containers.list(
         all=True,
@@ -595,6 +615,7 @@ def test_delete_db(
 if __name__ == "__main__":
     pgdata = Path(TEMP_DIR, "pgdata")
     pgdata.mkdir(parents=True, exist_ok=True)
+    postgres_workdir = Path(CONFIG_DIR, "postgres")
 
     name = f"test-postgres-{uuid.uuid4().hex[:8]}"
 
@@ -603,7 +624,8 @@ if __name__ == "__main__":
         password="testpass",
         database="testdb",
         project_name="itest",
-        workdir=TEMP_DIR,
+        workdir=postgres_workdir,
+        volume_path=pgdata,
         container_name=name,
         retries=20,
         delay=1,

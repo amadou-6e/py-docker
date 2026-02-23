@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "py-dockerdb"
+version = "0.8.0"
+description = "Python package for working with databases in Docker containers"
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.7"
+authors = [
+  { name = "Amadou Wolfgang Cisse", email = "amadou.6e@googlemail.com" }
+]
+dependencies = [
+  "psycopg2-binary",
+  "docker",
+  "pymongo",
+  "pydantic",
+  "pyodbc",
+  "mysql-connector-python",
+  "pydos2unix",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+  "Topic :: Database",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://github.com/amadou-6e/docker-db.git"
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+  "pytest-timeout",
+  "nbclient",
+  "nbformat",
+  "ipykernel",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["docker_db*"]
+
+[tool.setuptools.package-data]
+docker_db = ["tests/data/configs/*/*"]

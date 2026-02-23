@@ -12,9 +12,23 @@ from docker.models.containers import Container
 from docker.models.images import Image
 from tests.conftest import *
 # -- Ours --
-from docker_db.mssql_db import MSSQLConfig, MSSQLDB
+from docker_db.dbs.mssql_db import MSSQLConfig, MSSQLDB
 # -- Tests --
 from .utils import nuke_dir, clear_port
+
+
+def _cleanup_test_mssql_containers():
+    client = docker.from_env()
+    for container in client.containers.list(all=True):
+        if container.name.startswith("test-mssql"):
+            try:
+                container.stop(timeout=5)
+            except docker.errors.APIError:
+                pass
+            try:
+                container.remove(force=True)
+            except docker.errors.APIError:
+                pass
 
 
 @pytest.fixture(scope="module")
@@ -31,12 +45,19 @@ def init_script():
 #                 Cleanup
 # =======================================
 @pytest.fixture(autouse=True)
-def cleanup_temp_dir():
+def cleanup_temp_dir(request: pytest.FixtureRequest):
     """Clean up vault files using OS-agnostic commands."""
-
+    _cleanup_test_mssql_containers()
     nuke_dir(TEMP_DIR)
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     yield
+
+    # Preserve failed-test containers until after failure log collection.
+    rep_call = getattr(request.node, "rep_call", None)
+    if rep_call is not None and rep_call.failed:
+        return
+
+    _cleanup_test_mssql_containers()
     nuke_dir(TEMP_DIR)
 
 
@@ -329,14 +350,7 @@ def test_container_start_and_connect(
     time.sleep(5)
 
     # Reaching in admin mode, since the user is only created when running _create_db
-    conn_string = (f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                   f"SERVER={mssql_init_config.host},{mssql_init_config.port};"
-                   f"UID=sa;"
-                   f"PWD={mssql_init_config.sa_password};"
-                   f"TrustServerCertificate=yes;"
-                   f"Connection Timeout=10;")
-
-    conn = pyodbc.connect(conn_string)
+    conn = pyodbc.connect(mssql_init_manager._get_conn_string())
     cursor = conn.cursor()
     cursor.execute("SELECT OBJECT_ID('test_table')")
     result = cursor.fetchone()
@@ -357,15 +371,6 @@ def test_stop_and_remove_container(
 
     # Give SQL Server a moment to finish init
     time.sleep(5)
-
-    conn_string = (f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                   f"SERVER={mssql_init_config.host},{mssql_init_config.port};"
-                   f"UID=sa;"
-                   f"PWD={mssql_init_config.sa_password};"
-                   f"TrustServerCertificate=yes;"
-                   f"Connection Timeout=10;")
-
-    conn = pyodbc.connect(conn_string)
 
     # Stop container
     mssql_init_manager._stop_container()
@@ -405,8 +410,6 @@ def test_create_db(
     image_name: str,
     docker_file_path: Path | None,
     init_script_path: Path | None,
-    mssql_init_image: Image,
-    mssql_init_config: MSSQLConfig,
 ):
     name = f"test-mssql-{uuid.uuid4().hex[:8]}"
     config = MSSQLConfig(
@@ -425,16 +428,31 @@ def test_create_db(
     )
     manager = MSSQLDB(config)
     manager.create_db()
-    # Give SQL Server a moment to finish init
-    time.sleep(5)
-
-    conn = manager.connection
-    cursor = conn.cursor()
     if init_script_path is not None:
-        cursor.execute("SELECT OBJECT_ID('test_table')")
-        result = cursor.fetchone()
-        assert result[0] is not None, "Init script did not create test_table"
-    conn.close()
+        last_error = None
+        table_id = None
+        for _ in range(config.retries):
+            conn = None
+            try:
+                conn = manager.connection
+                cursor = conn.cursor()
+                cursor.execute("SELECT OBJECT_ID('test_table')")
+                result = cursor.fetchone()
+                table_id = result[0]
+                if table_id is not None:
+                    break
+            except pyodbc.Error as exc:
+                last_error = exc
+            finally:
+                if conn is not None:
+                    conn.close()
+            time.sleep(config.delay)
+
+        assert table_id is not None, (
+            "Init script did not create test_table"
+            if last_error is None
+            else f"Init script verification failed: {last_error}"
+        )
 
 
 @pytest.mark.usefixtures("clear_port_1433")
@@ -445,14 +463,6 @@ def test_stop_db(
     mssql_init_manager.create_db()
     # Give SQL Server a moment to finish init
     time.sleep(5)
-
-    conn_string = (f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                   f"SERVER={mssql_init_config.host},{mssql_init_config.port};"
-                   f"UID={mssql_init_config.user};"
-                   f"PWD={mssql_init_config.password};"
-                   f"DATABASE={mssql_init_config.database};")
-
-    conn = pyodbc.connect(conn_string)
 
     # Stop container
     mssql_init_manager.stop_db()
@@ -477,16 +487,12 @@ def test_delete_db(
     # Give SQL Server a moment to finish init
     time.sleep(5)
 
-    conn_string = (f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                   f"SERVER={mssql_init_config.host},{mssql_init_config.port};"
-                   f"UID={mssql_init_config.user};"
-                   f"PWD={mssql_init_config.password};"
-                   f"DATABASE={mssql_init_config.database};")
+    # By default running_ok=False, so deleting a running container should raise.
+    with pytest.raises(RuntimeError, match="still running"):
+        mssql_init_manager.delete_db()
 
-    conn = pyodbc.connect(conn_string)
-
-    # Remove container
-    mssql_init_manager.delete_db()
+    # Explicitly allow deletion of a running container.
+    mssql_init_manager.delete_db(running_ok=True)
     client = docker.from_env()
     conts = client.containers.list(
         all=True,

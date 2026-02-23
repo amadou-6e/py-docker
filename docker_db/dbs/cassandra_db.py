@@ -9,7 +9,7 @@ from cassandra.cluster import NoHostAvailable
 from docker.errors import APIError
 from docker.models.containers import Container
 # -- Ours --
-from containers import ContainerConfig, ContainerManager
+from docker_db.docker import ContainerConfig, ContainerManager
 
 
 class CassandraConfig(ContainerConfig):

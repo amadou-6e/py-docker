@@ -32,7 +32,7 @@ from pathlib import Path
 from docker.models.containers import Container
 from mysql.connector.errors import OperationalError
 # -- Ours --
-from docker_db.containers import ContainerConfig, ContainerManager
+from docker_db.docker import ContainerConfig, ContainerManager
 
 
 class MySQLConfig(ContainerConfig):
@@ -116,8 +116,9 @@ class MySQLDB(ContainerManager):
         If the database has been created (indicated by the database_created attribute),
         the connection will include the database name in the connection string.
         """
+        host = "127.0.0.1" if self.config.host == "localhost" else self.config.host
         return mysql.connector.connect(
-            host=self.config.host,
+            host=host,
             port=self.config.port,
             user=self.config.user,
             password=self.config.password,
@@ -207,8 +208,9 @@ class MySQLDB(ContainerManager):
 
         try:
             # Connect as root to create database and grant privileges
+            host = "127.0.0.1" if self.config.host == "localhost" else self.config.host
             conn = mysql.connector.connect(
-                host=self.config.host,
+                host=host,
                 port=self.config.port,
                 user="root",
                 password=self.config.root_password,
@@ -238,30 +240,16 @@ class MySQLDB(ContainerManager):
         except OperationalError as e:
             raise RuntimeError(f"Failed to create database: {e}")
 
+        return container
+
     def _wait_for_db(self, container=None) -> bool:
         """
         Wait until MySQL is accepting connections and ready.
-        
+
         This method has two phases:
         1. Wait for Docker container to be in 'Running' state
         2. Wait for MySQL to be ready to accept connections
-        
-        Parameters
-        ----------
-        container : docker.models.containers.Container, optional
-            Container object to use, if None will get container by name from Docker.
-            
-        Returns
-        -------
-        bool
-            True if database is ready, False if timeout was reached.
-            
-        Raises
-        ------
-        OperationalError
-            If an unexpected database connection error occurs.
         """
-
         # Phase 1: wait for Docker container to be 'Running'
         try:
             container = container or self.client.containers.get(self.config.container_name)
@@ -277,21 +265,39 @@ class MySQLDB(ContainerManager):
         # Phase 2: wait for DB to be ready (accepting connections)
         for _ in range(self.config.retries):
             try:
-                # Try to connect to MySQL server (not to a specific database)
+                container = container or self.client.containers.get(self.config.container_name)
+                container.reload()
+                health_status = container.attrs.get('State', {}).get('Health', {}).get('Status')
+                if health_status == 'healthy':
+                    return True
+            except Exception:
+                pass
+            try:
+                host = "127.0.0.1" if self.config.host == "localhost" else self.config.host
                 conn = mysql.connector.connect(
-                    host=self.config.host,
+                    host=host,
                     port=self.config.port,
-                    user="root",
-                    password=self.config.root_password,
+                    user=self.config.user,
+                    password=self.config.password,
+                    database=self.config.database,
                 )
                 conn.close()
                 return True
-            except OperationalError as e:
+            except mysql.connector.Error as e:
                 error_msg = str(e).lower()
                 if "lost connection to mysql server at 'reading initial communication packet'" in error_msg:
                     pass
+                elif "can't connect to mysql server" in error_msg:
+                    pass
+                elif "connection refused" in error_msg:
+                    pass
+                elif "server has gone away" in error_msg:
+                    pass
+                elif "reading authorization packet" in error_msg:
+                    pass
                 else:
-                    raise  # Unknown error — re-raise
+                    raise
             time.sleep(self.config.delay)
 
         return False
+

@@ -15,7 +15,7 @@ from docker.models.containers import Container
 from docker.models.images import Image
 from tests.conftest import *
 # -- Ours --
-from docker_db.cassandra_db import CassandraConfig, Cassandra
+from docker_db.dbs.cassandra_db import CassandraConfig, Cassandra
 
 
 @pytest.fixture(scope="module")
@@ -546,8 +546,12 @@ def test_delete_db(
     # Give Cassandra time to finish init
     time.sleep(30)
 
-    # Remove container
-    cassandra_init_manager.delete_db()
+    # By default running_ok=False, so deleting a running container should raise.
+    with pytest.raises(RuntimeError, match="still running"):
+        cassandra_init_manager.delete_db()
+
+    # Explicitly allow deletion of a running container.
+    cassandra_init_manager.delete_db(running_ok=True)
     docker_client = docker.from_env()
     conts = docker_client.containers.list(
         all=True,
