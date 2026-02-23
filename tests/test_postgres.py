@@ -91,13 +91,14 @@ def postgres_config() -> PostgresConfig:
     name = f"test-postgres-{uuid.uuid4().hex[:8]}"
     pgdata = Path(TEST_DIR, "data", "pgdata", name)
     pgdata.mkdir(parents=True, exist_ok=True)
+    postgres_workdir = Path(CONFIG_DIR, "postgres")
 
     config = PostgresConfig(
         user="testuser",
         password="testpass",
         database="testdb",
         project_name="itest",
-        workdir=TEMP_DIR,
+        workdir=postgres_workdir,
         volume_path=pgdata,
         container_name=name,
         retries=20,
@@ -114,13 +115,14 @@ def postgres_init_config(
     name = f"test-postgres-{uuid.uuid4().hex[:8]}"
     pgdata = Path(TEST_DIR, "data", "pgdata", name)
     pgdata.mkdir(parents=True, exist_ok=True)
+    postgres_workdir = Path(CONFIG_DIR, "postgres")
 
     config = PostgresConfig(
         user="testuser",
         password="testpass",
         database="testdb",
         project_name="itest",
-        workdir=TEMP_DIR,
+        workdir=postgres_workdir,
         volume_path=pgdata,
         init_script=init_script,
         dockerfile_path=dockerfile,
@@ -406,7 +408,13 @@ def test_create_db(
     image_name: str | None,
     postgres_init_config: PostgresConfig,
 ):
+    if image_name == "test-postgres-image" and docker_file_path is None:
+        pytest.skip("Local test image tag requires docker_file_path to build it.")
+
     name = f"test-postgres-{uuid.uuid4().hex[:8]}"
+    pgdata = Path(TEST_DIR, "data", "pgdata", name)
+    pgdata.mkdir(parents=True, exist_ok=True)
+    postgres_workdir = Path(CONFIG_DIR, "postgres")
 
     config = PostgresConfig(
         user="testuser",
@@ -416,7 +424,8 @@ def test_create_db(
         dockerfile_path=docker_file_path,
         init_script=init_script_path,
         image_name=image_name,
-        workdir=TEMP_DIR,
+        workdir=postgres_workdir,
+        volume_path=pgdata,
         container_name=name,
         retries=20,
         delay=5,
@@ -606,6 +615,7 @@ def test_delete_db(
 if __name__ == "__main__":
     pgdata = Path(TEMP_DIR, "pgdata")
     pgdata.mkdir(parents=True, exist_ok=True)
+    postgres_workdir = Path(CONFIG_DIR, "postgres")
 
     name = f"test-postgres-{uuid.uuid4().hex[:8]}"
 
@@ -614,7 +624,8 @@ if __name__ == "__main__":
         password="testpass",
         database="testdb",
         project_name="itest",
-        workdir=TEMP_DIR,
+        workdir=postgres_workdir,
+        volume_path=pgdata,
         container_name=name,
         retries=20,
         delay=1,

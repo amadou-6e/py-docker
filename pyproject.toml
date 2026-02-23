@@ -33,6 +33,7 @@ Homepage = "https://github.com/amadou-6e/docker-db.git"
 [project.optional-dependencies]
 test = [
   "pytest",
+  "pytest-timeout",
   "nbclient",
   "nbformat",
   "ipykernel",

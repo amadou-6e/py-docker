@@ -45,12 +45,18 @@ def init_script():
 #                 Cleanup
 # =======================================
 @pytest.fixture(autouse=True)
-def cleanup_temp_dir():
+def cleanup_temp_dir(request: pytest.FixtureRequest):
     """Clean up vault files using OS-agnostic commands."""
     _cleanup_test_mssql_containers()
     nuke_dir(TEMP_DIR)
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
     yield
+
+    # Preserve failed-test containers until after failure log collection.
+    rep_call = getattr(request.node, "rep_call", None)
+    if rep_call is not None and rep_call.failed:
+        return
+
     _cleanup_test_mssql_containers()
     nuke_dir(TEMP_DIR)
 

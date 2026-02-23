@@ -61,4 +61,4 @@ jobs:
         run: docker info
 
       - name: Run tests
-        run: python -m pytest -vv -s ${{ matrix.test_file }}
+        run: python -m pytest -vv -s --timeout=1200 --timeout-method=thread ${{ matrix.test_file }}

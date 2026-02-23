@@ -62,7 +62,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
 def _dump_container_logs_on_failure(request: pytest.FixtureRequest):
     yield
     report = getattr(request.node, "rep_call", None) or getattr(request.node, "rep_setup", None)
-    if not report or report.passed:
+    if not report or not report.failed:
         return
     if docker is None:
         return
