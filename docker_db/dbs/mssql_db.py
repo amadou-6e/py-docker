@@ -24,6 +24,7 @@ Examples
 >>> # Use the database...
 >>> db.stop_db()
 """
+import os
 import pyodbc
 import time
 import docker
@@ -234,6 +235,11 @@ class MSSQLDB(ContainerManager):
         return default_env_vars
 
     def _get_volume_mounts(self):
+        self.config.volume_path.mkdir(parents=True, exist_ok=True)
+        if os.name != "nt":
+            # SQL Server 2022 runs as non-root by default. Ensure bind-mounted
+            # host directory is writable by the container user.
+            os.chmod(self.config.volume_path, 0o777)
         return [
             docker.types.Mount(
                 target='/var/opt/mssql/data',
