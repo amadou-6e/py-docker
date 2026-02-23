@@ -32,7 +32,7 @@ from docker.models.containers import Container
 from pyodbc import OperationalError, InterfaceError
 from pydantic import Field
 # -- Ours --
-from docker_db.containers import ContainerConfig, ContainerManager
+from docker_db.docker import ContainerConfig, ContainerManager
 
 
 class MSSQLConfig(ContainerConfig):
@@ -100,6 +100,21 @@ class MSSQLDB(ContainerManager):
         self.config: MSSQLConfig = config
         assert self._is_docker_running()
         self.client = docker.from_env()
+        self._odbc_driver = self._resolve_odbc_driver()
+
+    def _resolve_odbc_driver(self) -> str:
+        """Return the best available ODBC driver for SQL Server."""
+        available = set(pyodbc.drivers())
+        for driver in (
+                "ODBC Driver 18 for SQL Server",
+                "ODBC Driver 17 for SQL Server",
+                "SQL Server",
+        ):
+            if driver in available:
+                return driver
+        raise RuntimeError(
+            "No SQL Server ODBC driver found. Install ODBC Driver 18/17 for SQL Server "
+            "or ensure the legacy 'SQL Server' driver is available.")
 
     @property
     def connection(self):
@@ -117,12 +132,16 @@ class MSSQLDB(ContainerManager):
         If the database has been created (indicated by the database_created attribute),
         the connection will include the database name in the connection string.
         """
-        connection_string = (f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                             f"SERVER={self.config.host},{self.config.port};"
-                             f"UID={self.config.user};"
-                             f"PWD={self.config.password};"
-                             f"TrustServerCertificate=yes;"
-                             f"Connection Timeout=10;")
+        parts = [
+            f"DRIVER={{{self._odbc_driver}}}",
+            f"SERVER={self.config.host},{self.config.port}",
+            f"UID={self.config.user}",
+            f"PWD={self.config.password}",
+            "Connection Timeout=10",
+        ]
+        if self._odbc_driver != "SQL Server":
+            parts.append("TrustServerCertificate=yes")
+        connection_string = ";".join(parts) + ";"
 
         if hasattr(self, 'database_created'):
             connection_string += f"DATABASE={self.config.database};"
@@ -155,16 +174,22 @@ class MSSQLDB(ContainerManager):
             base_url = f"mssql+pyodbc://{self.config.user}:{self.config.password}@{self.config.host}:{self.config.port}"
             if database:
                 base_url += f"/{database}"
-            base_url += "?driver=ODBC+Driver+17+for+SQL+Server&TrustServerCertificate=yes&Connection+Timeout=10"
+            encoded_driver = self._odbc_driver.replace(" ", "+")
+            base_url += (
+                f"?driver={encoded_driver}&TrustServerCertificate=yes&Connection+Timeout=10")
             return base_url
         else:
             # Standard pyodbc connection string format
-            connection_string = (f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                                 f"SERVER={self.config.host},{self.config.port};"
-                                 f"UID={self.config.user};"
-                                 f"PWD={self.config.password};"
-                                 f"TrustServerCertificate=yes;"
-                                 f"Connection Timeout=10;")
+            parts = [
+                f"DRIVER={{{self._odbc_driver}}}",
+                f"SERVER={self.config.host},{self.config.port}",
+                f"UID={self.config.user}",
+                f"PWD={self.config.password}",
+                "Connection Timeout=10",
+            ]
+            if self._odbc_driver != "SQL Server":
+                parts.append("TrustServerCertificate=yes")
+            connection_string = ";".join(parts) + ";"
 
             if database:
                 connection_string += f"DATABASE={database};"
@@ -186,12 +211,16 @@ class MSSQLDB(ContainerManager):
         str
             A connection string for pyodbc.
         """
-        conn_string = (f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-                       f"SERVER={self.config.host},{self.config.port};"
-                       f"UID=sa;"
-                       f"PWD={self.config.sa_password};"
-                       f"TrustServerCertificate=yes;"
-                       f"Connection Timeout=10;")
+        parts = [
+            f"DRIVER={{{self._odbc_driver}}}",
+            f"SERVER={self.config.host},{self.config.port}",
+            "UID=sa",
+            f"PWD={self.config.sa_password}",
+            "Connection Timeout=10",
+        ]
+        if self._odbc_driver != "SQL Server":
+            parts.append("TrustServerCertificate=yes")
+        conn_string = ";".join(parts) + ";"
         conn_string += f"DATABASE={db_name};" if db_name else ""
         return conn_string
 
@@ -222,9 +251,9 @@ class MSSQLDB(ContainerManager):
                 'CMD', '/opt/mssql-tools/bin/sqlcmd', '-S', 'localhost', '-U', 'sa', '-P',
                 self.config.sa_password, '-Q', 'SELECT 1'
             ],
-            'Interval': 30000000000,  # 30s
+            'Interval': 5000000000,  # 5s
             'Timeout': 3000000000,  # 3s
-            'Retries': 5,
+            'Retries': 12,
         }
 
     def _handle_init_script(self, mounts):
@@ -287,6 +316,9 @@ class MSSQLDB(ContainerManager):
                 except pyodbc.Error as e:
                     print(f"Error executing statement {i+1}: {e}")
                     print(f"Statement: {statement[:100]}...")
+                    cursor.close()
+                    conn.close()
+                    return False
 
             cursor.close()
             conn.close()
@@ -326,57 +358,66 @@ class MSSQLDB(ContainerManager):
         ------
         RuntimeError
             If the container is not running or database creation fails.
+
+        Returns
+        -------
+        container : docker.models.containers.Container
+            The container where the database was created.
         """
         container = container or self.client.containers.get(self.config.container_name)
         container.reload()
         if not container.attrs.get("State", {}).get("Running", False):
             raise RuntimeError(f"Container {container.name} is not running.")
 
-        try:
-            # Connect as SA (system admin) to create database and user
-            conn_string = self._get_conn_string()
+        db_name = db_name or self.config.database
+        last_error = None
+        for _ in range(self.config.retries):
+            try:
+                # Connect as SA (system admin) to create database and user.
+                conn = pyodbc.connect(self._get_conn_string())
+                conn.autocommit = True
+                cursor = conn.cursor()
 
-            conn = pyodbc.connect(conn_string)
-            conn.autocommit = True
-            cursor = conn.cursor()
+                # Check if database exists.
+                cursor.execute(f"SELECT DB_ID('{db_name}')")
+                exists = cursor.fetchone()[0]
 
-            # Check if database exists
-            cursor.execute(f"SELECT DB_ID('{db_name}')")
-            exists = cursor.fetchone()[0]
+                if not exists:
+                    print(f"Creating database '{db_name}'...")
+                    cursor.execute(f"CREATE DATABASE [{db_name}]")
+                else:
+                    print(f"Database '{db_name}' already exists.")
 
-            if not exists:
-                print(f"Creating database '{db_name}'...")
-
-                cursor.execute(f"CREATE DATABASE [{db_name}]")
-
-                # Check if user exists
+                # Check if login/user exists and create if needed.
                 cursor.execute(
                     f"SELECT COUNT(*) FROM sys.server_principals WHERE name = '{self.config.user}'")
                 user_exists = cursor.fetchone()[0] > 0
 
-            if not user_exists:
-                # Create login
-                cursor.execute(
-                    f"CREATE LOGIN [{self.config.user}] WITH PASSWORD='{self.config.password}'")
+                if not user_exists:
+                    cursor.execute(
+                        f"CREATE LOGIN [{self.config.user}] WITH PASSWORD='{self.config.password}'")
+                    cursor.execute(f"USE [{db_name}]")
+                    cursor.execute(
+                        f"CREATE USER [{self.config.user}] FOR LOGIN [{self.config.user}]")
+                    cursor.execute(f"ALTER ROLE db_owner ADD MEMBER [{self.config.user}]")
 
-                # Create user and grant permissions (needs to be done in the context of the database)
-                cursor.execute(f"USE [{db_name}]")
-                cursor.execute(f"CREATE USER [{self.config.user}] FOR LOGIN [{self.config.user}]")
-                cursor.execute(f"ALTER ROLE db_owner ADD MEMBER [{self.config.user}]")
-            else:
-                print(f"Database '{db_name}' already exists.")
+                cursor.close()
+                conn.close()
 
-            cursor.close()
-            conn.close()
+                if self.config.init_script:
+                    script_ok = self._execute_sql_script(self.config.init_script, db_name)
+                    if not script_ok:
+                        raise OperationalError("Failed to execute SQL init script.")
 
-            if self.config.init_script:
-                self._execute_sql_script(self.config.init_script, db_name)
+                self.database_created = True
+                return container
+            except pyodbc.Error as e:
+                last_error = e
+                time.sleep(self.config.delay)
 
-                # Mark the database as created
-            self.database_created = True
+        raise RuntimeError(f"Failed to create database: {last_error}")
 
-        except OperationalError as e:
-            raise RuntimeError(f"Failed to create database: {e}")
+        return container
 
     def _wait_for_db(self, container: Container | None = None) -> bool:
         """
@@ -421,20 +462,12 @@ class MSSQLDB(ContainerManager):
                 conn = pyodbc.connect(conn_string)
                 conn.close()
                 return True
-            except OperationalError as e:
-                error_msg = str(e).lower()
-                if "handshakes before login" in error_msg:
-                    pass
-                elif "communication link failure " in error_msg:
-                    pass
-                else:
-                    raise  # Unknown error — re-raise
-            except InterfaceError as e:
-                error_msg = str(e).lower()
-                if "login failed for user" in error_msg:
-                    pass
-                else:
-                    raise  # Unknown error — re-raise
+            except OperationalError:
+                # Startup surfaces different transient network/protocol errors
+                # depending on the host ODBC driver.
+                pass
+            except InterfaceError:
+                pass
             time.sleep(self.config.delay)
 
-        return
+        return False

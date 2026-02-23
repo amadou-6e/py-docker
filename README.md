@@ -146,6 +146,30 @@ config = MSSQLConfig(
 )
 ```
 
+### Network Mode and Optional Port Mapping
+
+You can now run containers with explicit Docker network settings and optionally skip host port publishing.
+
+```python
+from docker_db.postgres_db import PostgresConfig, PostgresDB
+
+config = PostgresConfig(
+    user="testuser",
+    password="testpass",
+    database="testdb",
+    network_mode="host",  # Linux native host networking
+    port=None,            # no host port mapping
+)
+
+db = PostgresDB(config)
+db.create_db()
+```
+
+Notes:
+- `network_mode="host"` works natively on Linux.
+- On Windows/macOS, host mode falls back to bridge mode.
+- If `port=None`, the manager skips host port mapping.
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.

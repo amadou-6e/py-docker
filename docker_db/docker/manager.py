@@ -1,96 +1,21 @@
-"""
-PostgreSQL Docker container management module.
-
-This module provides classes for configuring and managing PostgreSQL containers
-using the Docker SDK for Python.
-"""
-import os
-import psycopg2
-import time
-import uuid
-import docker
-import requests
+"""Container manager for Docker-based services."""
 import platform
-from pydos2unix import dos2unix
-from pydantic import BaseModel, Field
+import time
 from pathlib import Path
-from docker.errors import NotFound, APIError
+
+import docker
+from docker.errors import APIError, NotFound
 from docker.models.containers import Container
-from docker_db.utils import is_docker_running
+try:
+    from pydos2unix import dos2unix
+except ImportError:
 
-SHORTHAND_MAP = {
-    "postgres": "pg",
-    "mysql": "my",
-    "mariadb": "my",
-    "mssql": "ms",
-    "mongodb": "mg",
-    "cassandra": "cs",
-}
-
-DEFAULT_IMAGE_MAP = {
-    "postgres": "postgres:16",
-    "mysql": "mysql:8",
-    "mariadb": "mariadb:10",
-    "mssql": "mcr.microsoft.com/mssql/server:2022-latest",
-    "mongodb": "mongo:6",
-    "cassandra": "cassandra:4",
-}
+    def dos2unix(src):
+        return src.read()
 
 
-class ContainerConfig(BaseModel):
-    """
-    Configuration for a Docker container running a database.
-    """
-    host: str = Field(
-        default="localhost",
-        description="The hostname where the PostgreSQL server will be accessible",
-    )
-    port: int | None = Field(
-        default=None,
-        description="The port number where the PostgreSQL server will be accessible",
-    )
-    project_name: str = Field(
-        default="docker_db",
-        description="Name of the project, used as a prefix for container and image names",
-    )
-    image_name: str | None = Field(
-        default=None,
-        description='Name of the Docker image, defaults to "{project_name}-{db_type}:dev"',
-    )
-    container_name: str | None = Field(
-        default=None,
-        description='Name of the Docker container, defaults to "{project_name}-{db_type}"',
-    )
-    workdir: Path | None = Field(
-        default=None,
-        description="Working directory for Docker operations, defaults to current directory",
-    )
-    dockerfile_path: Path | None = Field(
-        default=None,
-        description='Path to the Dockerfile, defaults to "{workdir}/docker/Dockerfile.pgdb"',
-    )
-    init_script: Path | None = Field(
-        default=None,
-        description="Path to initialization script for database setup",
-    )
-    volume_path: Path | None = Field(
-        default=None,
-        description='Path to persist PostgreSQL data, defaults to "{workdir}/pgdata"',
-    )
-    retries: int = Field(default=10, description="Number of connection retry attempts")
-    delay: int = Field(default=3, description="Delay in seconds between retry attempts")
-    _type: str | None = None  # internal field, not exposed via schema
-
-    def model_post_init(self, __context__):
-        self.workdir = self.workdir or Path(os.getenv("WORKDIR", os.getcwd()))
-        self.image_name = self.image_name or DEFAULT_IMAGE_MAP[self._type]
-        self.container_name = self.container_name or f"{self.project_name}-{self._type}-{uuid.uuid4().hex[:8]}"
-        self.volume_path = self.volume_path or Path(self.workdir,
-                                                    f"{SHORTHAND_MAP[self._type]}data")
-        self.volume_path.mkdir(parents=True, exist_ok=True)
-        if self.port is None:
-            raise ValueError(
-                "Port must be specified. Use the 'port' parameter in the configuration.")
+from docker_db.docker.model import ContainerConfig
+from docker_db.docker.utils import is_docker_running
 
 
 class ContainerManager:
@@ -160,6 +85,7 @@ class ContainerManager:
         exists_ok: bool = True,
         running_ok: bool = True,
         force: bool = False,
+        retry: bool = True,
     ):
         """
         Create the container, the database and have it running.
@@ -194,26 +120,29 @@ class ContainerManager:
         # Ensure container is running
         db_name = db_name or self.config.database
         self._build_image()
-        self._create_container(
+        container = container or self._create_container(
             exists_ok=exists_ok or running_ok,
             force=force,
         )
         if self.config.volume_path is not None:
             Path(self.config.volume_path).mkdir(parents=True, exist_ok=True)
-        self.start_db(
+        container = self.start_db(
             container=container,
             running_ok=running_ok,
             force=force,
+            retry=retry,
         )
-        self._create_db(
+        container = self._create_db(
             db_name,
             container=container,
         )
+        return container
 
     def start_db(
         self,
         container: Container = None,
         running_ok: bool = True,
+        retry: bool = True,
         force: bool = False,
     ):
         """
@@ -244,16 +173,19 @@ class ContainerManager:
         # Optional conversion for specific databases (e.g., Postgres)
         if hasattr(self, '_convert_script_to_unix'):
             self._convert_script_to_unix()
-        self._start_container(
+        container = self._start_container(
             container=container,
             running_ok=running_ok,
             force=force,
+            retry=retry,
         )
         if hasattr(self, '_user_ready_on_start') and not self._user_ready_on_start:
             # MSSQL user is created after the debug is up so the test
             # will fail. For others this is fine.
-            return
+            return container
         self.test_connection()
+
+        return container
 
     def restart_db(self, container=None, wait_timeout: int = 30):
         """
@@ -308,14 +240,15 @@ class ContainerManager:
         This method stops the container and prints its state.
         """
         # Stop container
-        self._stop_container(
+        container = self._stop_container(
             container=container,
             force=force,
         )
-        self._wait_for_container_stop(
+        container = self._wait_for_container_stop(
             container,
             self.config.port,
         )
+        return container
 
     def delete_db(self, container: Container | None = None, running_ok: bool = False):
         """
@@ -324,13 +257,17 @@ class ContainerManager:
         This method removes the container completely.
         """
         # Remove container
-        if self.state == "running" and not running_ok:
+        try:
+            container = container or self.client.containers.get(self.config.container_name)
+        except NotFound:
+            return None
+        if self.state(container=container) == "running" and not running_ok:
             raise RuntimeError(
                 f"Container {self.config.container_name} is still running. Stop it first or specify running_ok=True."
             )
-        elif self.state == "running":
-            self.stop_db(container)
-        self._remove_container()
+        elif self.state(container=container) == "running":
+            container = self.stop_db(container)
+        return self._remove_container(container=container)
 
     def _wait_for_container_stop(self, container=None, port: int = None, timeout: int = 30):
         """
@@ -371,9 +308,62 @@ class ContainerManager:
                 if f"{port}/tcp" not in ports or ports[f"{port}/tcp"] is None:
                     print(f"Container {self.config.container_name} stopped and port {port} is free")
                     time.sleep(2)
-                    return
+                    return container
 
             time.sleep(0.5)
+
+    def _validate_port_bindings(
+        self,
+        container: Container,
+        retry: bool = True,
+    ) -> bool:
+        """
+        Check whether the running container has the configured host-port binding.
+
+        Returns
+        -------
+        bool
+            True if all configured explicit host-port mappings are present.
+        """
+        configured_ports = self._get_port_mappings() or {}
+        if not configured_ports:
+            return container
+
+        container.reload()
+        actual_ports = container.attrs.get("NetworkSettings", {}).get("Ports", {}) or {}
+
+        def restart_or_raise():
+            if retry:
+                print("Found port connectivity issue. Recreating the container."
+                      " Set retry=False to prevent this behavior.")
+                self.stop_db(force=True)
+                self._remove_container()
+                container = self._create_container(exists_ok=False, force=True)
+                container = self._start_container(
+                    container,
+                    force=True,
+                    running_ok=False,
+                    retry=False,
+                )
+            else:
+                raise ConnectionError(
+                    f"Container {container.name} is running but does not have "
+                    f"the expected host-port binding.",)
+            return container
+
+        for container_port, host_port in configured_ports.items():
+            if host_port is None:
+                continue
+            bindings = actual_ports.get(container_port)
+            if not bindings:
+                container = restart_or_raise()
+                break
+            host_ports = {entry.get("HostPort") for entry in bindings if entry}
+            if str(host_port) not in host_ports:
+                container = restart_or_raise()
+                break
+
+        return container
 
     def _convert_script_to_unix(self):
         """
@@ -521,8 +511,9 @@ class ContainerManager:
         try:
             container = container or self.client.containers.get(self.config.container_name)
             container.remove(force=True)
+            return container
         except NotFound:
-            pass  # nothing to remove
+            return None  # nothing to remove
         except APIError as e:
             raise RuntimeError(f"Failed to remove container: {e.explanation}") from e
 
@@ -559,13 +550,15 @@ class ContainerManager:
                 self._remove_container()
             elif exists_ok:
                 print(f"Container {self.config.container_name} already exists.")
-                return
+                return self.client.containers.get(self.config.container_name)
             else:
                 raise RuntimeError(
                     f"Container {self.config.container_name} already exists. Use force=True "
                     "to remove it, or set exists_ok=True to ignore the error.")
 
         # Get database-specific configurations
+        if getattr(self.config, "volume_path", None) is not None:
+            Path(self.config.volume_path).mkdir(parents=True, exist_ok=True)
         env = self._get_environment_vars()
         mounts = self._get_volume_mounts()
         ports = self._get_port_mappings()
@@ -591,6 +584,8 @@ class ContainerManager:
 
     def _handle_init_script(self, mounts):
         """Handle initialization script if provided."""
+        if hasattr(self, '_convert_script_to_unix'):
+            self._convert_script_to_unix()
         if hasattr(self.config, 'init_script') and self.config.init_script is not None:
             if not self.config.init_script.exists():
                 raise FileNotFoundError(f"Init script {self.config.init_script} does not exist.")
@@ -599,7 +594,7 @@ class ContainerManager:
                 docker.types.Mount(
                     target=self._get_init_script_target(),
                     source=str(self.config.init_script.parent.resolve()),
-                    type='volume',  # 'bind',
+                    type='bind',
                     read_only=True,
                 ))
 
@@ -629,6 +624,7 @@ class ContainerManager:
         container: Container = None,
         force: bool = False,
         running_ok: bool = True,
+        retry: bool = True,
     ):
         """
         Start the container and wait until healthy.
@@ -645,26 +641,41 @@ class ContainerManager:
         ConnectionError
             If PostgreSQL does not become ready within the configured timeout
         """
+        if container is not None:
+            try:
+                container.reload()
+            except NotFound:
+                container = None
+
         if container is None:
             try:
                 container = self.client.containers.get(self.config.container_name)
             except NotFound:
-                raise RuntimeError("Container not found. Did you create it?")
+                if retry:
+                    self._create_container(exists_ok=True)
+                    container = self.client.containers.get(self.config.container_name)
+                else:
+                    raise RuntimeError(
+                        f"Container {self.config.container_name} has not been found and cannot been started."
+                    )
 
-        container.reload()
         if container.status == 'running':
             if force:
                 print(f"Container {container.name} is already running. Stopping it...")
                 self._stop_container(container=container, force=True)
             elif running_ok:
                 # Just wait for the DB to be ready if it's already running
+                container = self._validate_port_bindings(container, retry=retry)
+
                 if not self._wait_for_db(container=container):
-                    raise ConnectionError("Database did not become ready in time.")
+                    container.reload()
+                    health_status = container.attrs.get("State", {}).get("Health", {}).get("Status")
+                    if health_status != "healthy":
+                        raise ConnectionError("Database did not become ready in time.")
                 return container
             else:
-                raise RuntimeError(
-                    f"Container {container.name} is already running. Use force=True to stop it, "
-                    "or running_ok=True to ignore it.")
+                print(f"Container {container.name} is already running. Restarting it.")
+                self._stop_container(container=container, force=True)
 
         try:
             container.start()
@@ -672,8 +683,14 @@ class ContainerManager:
             raise RuntimeError(f"Failed to start container: {e.explanation}") from e
 
         # Wait for healthcheck or direct connect
+        container = self._validate_port_bindings(container, retry=retry)
+
         if not self._wait_for_db(container=container):
-            raise ConnectionError("Database did not become ready in time.")
+            container.reload()
+            health_status = container.attrs.get("State", {}).get("Health", {}).get("Status")
+            if health_status != "healthy":
+                raise ConnectionError("Database did not become ready in time.")
+        return container
 
     def _create_db(
         self,
@@ -689,6 +706,11 @@ class ContainerManager:
             Name of the database to create
         container : docker.models.containers.Container, optional
             Container reference, fetches by name if not provided
+
+        Returns
+        -------
+        container : docker.models.containers.Container
+            The container where the database was created.
         
         Raises
         ------
@@ -752,9 +774,9 @@ class ContainerManager:
                 raise RuntimeError(
                     f"Container {container.name} did not stop gracefully after {self.config.retries} attempts."
                 )
-            return
+            return container
         except NotFound:
-            pass
+            return None
         except APIError as e:
             raise RuntimeError(f"Failed to stop container: {e.explanation}") from e
 
@@ -798,9 +820,14 @@ class ContainerManager:
         ConnectionError
             If the database is unreachable and Docker container needs to be started
         """
-        try:
-            conn = self.connection
-            conn.close()
-        except Exception as e:
-            print(f"DB unreachable. Obtained error: {e}")
-            raise e
+        last_error = None
+        for _ in range(self.config.retries):
+            try:
+                conn = self.connection
+                conn.close()
+                return
+            except Exception as e:
+                last_error = e
+                time.sleep(self.config.delay)
+        print(f"DB unreachable. Obtained error: {last_error}")
+        raise last_error

@@ -25,24 +25,29 @@ def nuke_dir(path: Path):
         os.system(cmd)
 
 
-def clear_port(port: int, container_prefix: str):
+def clear_port(port: int, container_prefix: str, timeout: int = 60):
     client = docker.from_env()
+    start = time.time()
 
     while True:
-        containers = client.containers.list(all=True)  # include stopped/exited containers
+        if time.time() - start > timeout:
+            raise TimeoutError(f"Timed out while clearing port {port}")
+
         port_still_in_use = False
+        containers = client.containers.list()  # running only
 
         for container in containers:
             container.reload()
             ports = container.attrs.get("NetworkSettings", {}).get("Ports", {})
             if f"{port}/tcp" in ports and ports[f"{port}/tcp"] is not None:
-                port_still_in_use = True
                 if container.name.startswith(container_prefix):
-                    container.stop()
+                    container.stop(timeout=5)
+                else:
+                    port_still_in_use = True
 
         if not port_still_in_use:
             break
 
         time.sleep(0.5)
 
-    time.sleep(2)
+    time.sleep(1)

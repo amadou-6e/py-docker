@@ -32,7 +32,7 @@ from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, OperationFailure
 from docker.models.containers import Container
 # -- Ours --
-from docker_db.containers import ContainerConfig, ContainerManager
+from docker_db.docker import ContainerConfig, ContainerManager
 
 
 class MongoDBConfig(ContainerConfig):
@@ -170,7 +170,11 @@ class MongoDB(ContainerManager):
 
     def _get_healthcheck(self):
         return {
-            'Test': ['CMD', 'mongo', '--eval', 'db.adminCommand("ping")'],
+            'Test': [
+                'CMD-SHELL',
+                'mongosh --quiet --eval "db.adminCommand({ ping: 1 }).ok" '
+                '|| mongo --quiet --eval "db.adminCommand({ ping: 1 }).ok"',
+            ],
             'Interval': 30000000000,  # 30s
             'Timeout': 3000000000,  # 3s
             'Retries': 5,
@@ -202,6 +206,11 @@ class MongoDB(ContainerManager):
         ------
         RuntimeError
             If the container is not running or database creation fails.
+
+        Returns
+        -------
+        container : docker.models.containers.Container
+            The container where the database was created.
         """
         db_name = db_name or self.config.database
         container = container or self.client.containers.get(self.config.container_name)
@@ -246,6 +255,8 @@ class MongoDB(ContainerManager):
         except (ConnectionFailure, OperationFailure) as e:
             raise RuntimeError(f"Failed to create database: {e}")
 
+        return container
+
     def _wait_for_db(self, container=None) -> bool:
         """
         Wait until MongoDB is accepting connections and ready.
@@ -283,7 +294,13 @@ class MongoDB(ContainerManager):
         for _ in range(self.config.retries):
             try:
                 # Try to connect to MongoDB server
-                client = MongoClient(self._get_conn_string())
+                client = MongoClient(
+                    self._get_conn_string(),
+                    serverSelectionTimeoutMS=2000,
+                    connectTimeoutMS=2000,
+                    socketTimeoutMS=2000,
+                    directConnection=True,
+                )
                 # Explicitly check if the connection is working
                 client.admin.command('ping')
                 client.close()

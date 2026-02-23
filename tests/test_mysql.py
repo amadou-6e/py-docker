@@ -12,7 +12,7 @@ from docker.models.containers import Container
 from docker.models.images import Image
 from tests.conftest import *
 # -- Ours --
-from docker_db.mysql_db import MySQLConfig, MySQLDB
+from docker_db.dbs.mysql_db import MySQLConfig, MySQLDB
 # -- Tests --
 from .utils import nuke_dir, clear_port
 
@@ -490,16 +490,12 @@ def test_delete_db(
     # Give MySQL a moment to finish init
     time.sleep(5)
 
-    conn = mysql.connector.connect(
-        host=mysql_init_config.host,
-        port=mysql_init_config.port,
-        user=mysql_init_config.user,
-        password=mysql_init_config.password,
-        database=mysql_init_config.database,
-    )
+    # By default running_ok=False, so deleting a running container should raise.
+    with pytest.raises(RuntimeError, match="still running"):
+        mysql_init_manager.delete_db()
 
-    # Remove container
-    mysql_init_manager.delete_db()
+    # Explicitly allow deletion of a running container.
+    mysql_init_manager.delete_db(running_ok=True)
     client = docker.from_env()
     conts = client.containers.list(
         all=True,
