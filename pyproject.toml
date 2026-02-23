@@ -35,6 +35,7 @@ test = [
   "pytest",
   "nbclient",
   "nbformat",
+  "ipykernel",
 ]
 
 [tool.setuptools]

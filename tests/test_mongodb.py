@@ -84,6 +84,7 @@ def cleanup_temp_dir():
 def mongodb_config() -> MongoDBConfig:
     mongodata = Path(TEMP_DIR, "mongodata")
     mongodata.mkdir(parents=True, exist_ok=True)
+    mongo_workdir = Path(CONFIG_DIR, "mongodb")
 
     name = f"test-mongodb-{uuid.uuid4().hex[:8]}"
 
@@ -94,7 +95,8 @@ def mongodb_config() -> MongoDBConfig:
         root_username="root",
         root_password="RootPass123!",
         project_name="itest",
-        workdir=TEMP_DIR,
+        workdir=mongo_workdir,
+        volume_path=mongodata,
         container_name=name,
         retries=20,
         delay=5,
@@ -109,6 +111,7 @@ def mongodb_init_config(
 ) -> MongoDBConfig:
     mongodata = Path(TEMP_DIR, "mongodata")
     mongodata.mkdir(parents=True, exist_ok=True)
+    mongo_workdir = Path(CONFIG_DIR, "mongodb")
 
     name = f"test-mongodb-{uuid.uuid4().hex[:8]}"
 
@@ -119,7 +122,8 @@ def mongodb_init_config(
         root_username="root",
         root_password="RootPass123!",
         project_name="itest",
-        workdir=TEMP_DIR,
+        workdir=mongo_workdir,
+        volume_path=mongodata,
         init_script=init_script,
         dockerfile_path=dockerfile,
         container_name=name,
@@ -443,6 +447,12 @@ def test_create_db(
     docker_file_path: Path | None,
     init_script_path: Path | None,
 ):
+    if image_name == "test-mongo-image" and docker_file_path is None:
+        pytest.skip("Local test image tag requires docker_file_path to build it.")
+
+    mongodata = Path(TEMP_DIR, "mongodata")
+    mongodata.mkdir(parents=True, exist_ok=True)
+    mongo_workdir = Path(CONFIG_DIR, "mongodb")
     name = f"test-mongo-{uuid.uuid4().hex[:8]}"
     config = MongoDBConfig(
         user="testuser",
@@ -454,7 +464,8 @@ def test_create_db(
         dockerfile_path=docker_file_path,
         init_script=init_script_path,
         image_name=image_name,
-        workdir=TEMP_DIR,
+        workdir=mongo_workdir,
+        volume_path=mongodata,
         container_name=name,
         retries=20,
         delay=5,
@@ -527,6 +538,7 @@ def test_delete_db(
 if __name__ == "__main__":
     mongodata = Path(TEMP_DIR, "mongodata")
     mongodata.mkdir(parents=True, exist_ok=True)
+    mongo_workdir = Path(CONFIG_DIR, "mongodb")
 
     name = f"test-mongodb-{uuid.uuid4().hex[:8]}"
 
@@ -537,7 +549,8 @@ if __name__ == "__main__":
         root_username="root",
         root_password="RootPass123!",
         project_name="itest",
-        workdir=TEMP_DIR,
+        workdir=mongo_workdir,
+        volume_path=mongodata,
         container_name=name,
         retries=20,
         delay=1,

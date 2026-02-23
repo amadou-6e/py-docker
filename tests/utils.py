@@ -7,20 +7,41 @@ from pathlib import Path
 
 
 def nuke_dir(path: Path):
+    if not path.exists():
+        return
+
+    # Best-effort chmod pass for local cleanup.
+    for root, dirs, files in os.walk(path, topdown=False):
+        for name in files:
+            try:
+                os.chmod(os.path.join(root, name), 0o777)
+            except Exception:
+                pass
+        for name in dirs:
+            try:
+                os.chmod(os.path.join(root, name), 0o777)
+            except Exception:
+                pass
+
+    shutil.rmtree(path, ignore_errors=True)
+    if not path.exists():
+        return
+
+    # CI/Linux fallback: remove root-owned bind-mount artifacts via Docker as root.
+    if platform.system() != "Windows":
+        try:
+            client = docker.from_env()
+            client.containers.run(
+                "alpine:3.20",
+                command='sh -lc "rm -rf /target/* /target/.[!.]* /target/..?* || true"',
+                remove=True,
+                volumes={str(path): {"bind": "/target", "mode": "rw"}},
+            )
+        except Exception:
+            pass
+
+    shutil.rmtree(path, ignore_errors=True)
     if path.exists():
-        # chmod all files to ensure they are deletable
-        for root, dirs, files in os.walk(path, topdown=False):
-            for name in files:
-                try:
-                    os.chmod(os.path.join(root, name), 0o777)
-                except Exception:
-                    pass
-            for name in dirs:
-                try:
-                    os.chmod(os.path.join(root, name), 0o777)
-                except Exception:
-                    pass
-        shutil.rmtree(path, ignore_errors=True)
         cmd = f'rmdir /s /q "{path}"' if platform.system() == "Windows" else f'rm -rf "{path}"'
         os.system(cmd)
 
