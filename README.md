@@ -12,7 +12,7 @@ pip install py-dockerdb
 
 `py-dockerdb` manages Docker containers for databases through a single, unified Python API. Call `create_db()` to get a running container with a live connection object. Call `delete_db()` when you are done. No Dockerfiles to write, no ports to remember, no environment variables to juggle.
 
-**Why this exists:** standing up a local Postgres, MongoDB, or MySQL instance for development and testing typically means writing Dockerfiles, debugging init scripts, and wiring connection strings by hand. `py-dockerdb` reduces that to two lines of Python so you can focus on the application logic.
+**Why this exists:** standing up a local Postgres, Neo4j, MongoDB, or MySQL instance for development and testing typically means writing Dockerfiles, debugging init scripts, and wiring connection strings by hand. `py-dockerdb` reduces that to two lines of Python so you can focus on the application logic.
 
 ---
 
@@ -21,6 +21,7 @@ pip install py-dockerdb
 | Class | Image | Default Port |
 |---|---|---|
 | `PostgresDB` | `postgres:16` | 5432 |
+| `Neo4jDB` | `neo4j:5` | 7687 (Bolt) · 7474 (Browser) |
 | `MongoDB` | `mongo:6` | 27017 |
 | `MySQLDB` | `mysql:8` | 3306 |
 | `MSSQLDB` | `mcr.microsoft.com/mssql/server:2022-latest` | 1433 |
@@ -30,7 +31,11 @@ pip install py-dockerdb
 ## Installation
 
 ```bash
+# Core
 pip install py-dockerdb
+
+# With graph dependencies (Neo4j driver, LlamaIndex / LangChain graph stores)
+pip install "py-dockerdb[graph]"
 ```
 
 ---
@@ -100,6 +105,39 @@ config = MSSQLConfig(user="sa", password="StrongPass123!", database="mydb")
 db = MSSQLDB(config)
 db.create_db()
 ```
+
+### Neo4j (GraphRAG)
+
+Graph retrieval substantially improves answer quality on multi-hop, relationship-heavy
+questions that dense-vector search alone cannot follow. `Neo4jDB.connection` returns a
+`neo4j.Driver` that plugs directly into LlamaIndex's `Neo4jGraphStore` and LangChain's
+`Neo4jGraph`.
+
+```python
+from docker_db import Neo4jDB, Neo4jConfig
+
+config = Neo4jConfig(password="strongpass")
+db = Neo4jDB(config)
+db.create_db()
+
+driver = db.connection          # neo4j.Driver — Bolt at db.connection_string()
+# Neo4j Browser UI: http://localhost:7474
+```
+
+```python
+# LlamaIndex
+from llama_index.graph_stores.neo4j import Neo4jGraphStore
+graph_store = Neo4jGraphStore(
+    username=config.user, password=config.password,
+    url=db.connection_string(), database=config.database,
+)
+
+# LangChain
+from langchain_community.graphs import Neo4jGraph
+graph = Neo4jGraph(url=db.connection_string(), username=config.user, password=config.password)
+```
+
+See [usage/neo4j_example.ipynb](usage/neo4j_example.ipynb) for the full walkthrough including multi-hop traversal and GraphRAG indexing.
 
 ### Initialization Scripts
 

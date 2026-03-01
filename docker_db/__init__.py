@@ -7,6 +7,8 @@ from docker_db.dbs import (
     MSSQLDB,
     MySQLConfig,
     MySQLDB,
+    Neo4jConfig,
+    Neo4jDB,
     PostgresConfig,
     PostgresDB,
 )
@@ -23,4 +25,6 @@ __all__ = [
     "MySQLConfig",
     "MSSQLDB",
     "MSSQLConfig",
+    "Neo4jDB",
+    "Neo4jConfig",
 ]
