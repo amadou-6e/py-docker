@@ -15,5 +15,7 @@ documentation for details.
    :maxdepth: 4
    :caption: Contents: 
    
+   introduction
+   quick_start
    source/modules.rst
 
