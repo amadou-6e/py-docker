@@ -5,7 +5,7 @@ ztrash
 debug.log
 config.yaml
 chromedriver.log
-.skills
+.skill*
 
 
 # Created by https://www.gitignore.io/api/python

@@ -12,6 +12,7 @@ SHORTHAND_MAP = {
     "mssql": "ms",
     "mongodb": "mg",
     "cassandra": "cs",
+    "redis": "rd",
 }
 
 DEFAULT_IMAGE_MAP = {
@@ -21,6 +22,7 @@ DEFAULT_IMAGE_MAP = {
     "mssql": "mcr.microsoft.com/mssql/server:2022-latest",
     "mongodb": "mongo:6",
     "cassandra": "cassandra:4",
+    "redis": "redis:7",
 }
 
 class ContainerConfig(BaseModel):
