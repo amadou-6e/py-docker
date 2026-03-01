@@ -23,6 +23,7 @@ jobs:
           - tests/test_mysql.py
           - tests/test_mongodb.py
           - tests/test_mssql.py
+          - tests/test_ollama.py
 
     steps:
       - name: Checkout

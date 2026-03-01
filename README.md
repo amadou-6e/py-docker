@@ -24,6 +24,7 @@ The following databases are supported:
   - Microsoft SQL Server
   - PostgreSQL
   - MySQL
+  - Ollama (local LLM runtime)
 
 These databases might be added in the future:
 - Cassandra

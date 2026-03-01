@@ -7,6 +7,8 @@ from docker_db.dbs import (
     MSSQLDB,
     MySQLConfig,
     MySQLDB,
+    OllamaConfig,
+    OllamaDB,
     PostgresConfig,
     PostgresDB,
 )
@@ -21,6 +23,8 @@ __all__ = [
     "PostgresConfig",
     "MySQLDB",
     "MySQLConfig",
+    "OllamaDB",
+    "OllamaConfig",
     "MSSQLDB",
     "MSSQLConfig",
 ]
