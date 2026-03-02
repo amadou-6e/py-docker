@@ -29,6 +29,7 @@ from docker_db.docker import ContainerConfig, ContainerManager
 
 class Neo4jConfig(ContainerConfig):
     """Configuration for a Neo4j container."""
+
     user: str = Field(default="neo4j", description="Neo4j username")
     password: str = Field(description="Neo4j password (minimum 8 characters)")
     database: str = Field(default="neo4j", description="Name of the Neo4j database")

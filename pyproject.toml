@@ -47,6 +47,7 @@ test = [
   "nbclient",
   "nbformat",
   "ipykernel",
+  "pydocstyle",
 ]
 graph = [
   "neo4j",

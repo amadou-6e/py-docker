@@ -18,6 +18,7 @@ from docker_db.docker import ContainerConfig, ContainerManager
 
 class RedisConfig(ContainerConfig):
     """Configuration for Redis container."""
+
     database: int = Field(default=0, description="Redis logical database index")
     port: int = Field(default=6379, description="Port on which Redis listens")
     env_vars: dict = Field(

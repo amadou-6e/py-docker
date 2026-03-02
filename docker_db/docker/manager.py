@@ -11,6 +11,7 @@ try:
 except ImportError:
 
     def dos2unix(src):
+        """Return input bytes unchanged when pydos2unix is unavailable."""
         return src.read()
 
 
@@ -208,7 +209,6 @@ class ContainerManager:
         ConnectionError
             If database does not become ready within the configured timeout
         """
-
         try:
             container = container or self.client.containers.get(self.config.container_name)
         except NotFound:
@@ -368,6 +368,7 @@ class ContainerManager:
     def _convert_script_to_unix(self):
         """
         Convert all init scripts in the specified directory to Unix line endings.
+
         This is necessary for compatibility with Docker containers that expect
         Unix-style line endings.
         """
