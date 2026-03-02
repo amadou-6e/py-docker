@@ -27,6 +27,7 @@ jobs:
           - tests/test_ollama.py
           - tests/test_redis.py
           - tests/test_opensearch.py
+          - tests/test_neo4j.py
 
     steps:
       - name: Checkout
@@ -54,7 +55,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[test,rag]"
+          python -m pip install -e ".[test,rag,graph]"
 
       - name: Register Jupyter kernel
         run: |

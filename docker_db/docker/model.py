@@ -15,6 +15,7 @@ SHORTHAND_MAP = {
     "ollama": "ol",
     "redis": "rd",
     "opensearch": "os",
+    "neo4j": "n4j",
 }
 
 DEFAULT_IMAGE_MAP = {
@@ -24,12 +25,10 @@ DEFAULT_IMAGE_MAP = {
     "mssql": "mcr.microsoft.com/mssql/server:2022-latest",
     "mongodb": "mongo:6",
     "cassandra": "cassandra:4",
-<<<<<<< HEAD
     "ollama": "ollama/ollama:latest",
-=======
     "redis": "redis:7",
     "opensearch": "opensearchproject/opensearch:2.13.0",
->>>>>>> main
+    "neo4j": "neo4j:5",
 }
 
 class ContainerConfig(BaseModel):

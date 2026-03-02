@@ -6,26 +6,18 @@
 [![PyPI](https://img.shields.io/pypi/v/py-dockerdb)](https://pypi.org/project/py-dockerdb/)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
-`py-dockerdb` gives you easy Docker database setup in Python for PostgreSQL, MySQL, MongoDB, Microsoft SQL Server, and Redis. It is built for people who teach, demo, and prototype with notebooks or scripts and need repeatable local databases in minutes. Instead of writing Docker commands and per-engine setup code, you use one API to create, start, connect, and clean up containers.
+`py-dockerdb` gives you easy Docker database setup in Python for PostgreSQL, MySQL, MongoDB, Microsoft SQL Server, Redis, and Neo4j. It is built for people who teach, demo, and prototype with notebooks or scripts and need repeatable local databases in minutes. Instead of writing Docker commands and per-engine setup code, you use one API to create, start, connect, and clean up containers.
 
-Switch from PostgreSQL to MongoDB and back without changing a line of connection code. This makes side-by-side database comparison a first-class workflow - useful for MVPs where the right engine isn't decided yet, and for RAG experiments where you want to test one storage backend, then swap it out without rewriting environment glue.
+Switch from PostgreSQL to MongoDB and back without changing a line of connection code. This makes side-by-side database comparison a first-class workflow - useful for MVPs where the right engine isn't decided yet, and for RAG and GraphRAG experiments where you want to test one storage backend, then swap it out without rewriting environment glue.
 
 If you teach SQL or data workflows, it removes the environment-setup section from your slides entirely: every student runs the same two lines and gets a working database.
 
-<<<<<<< HEAD
-The following databases are supported:
-  - MongoDB
-  - Microsoft SQL Server
-  - PostgreSQL
-  - MySQL
-  - Ollama (local LLM runtime)
-=======
 ## When to use this
->>>>>>> main
 
 - **Teaching a SQL workshop or notebook tutorial** - every learner starts from the same environment with no per-machine Docker setup required.
-- **Comparing databases for an MVP** - run PostgreSQL, MySQL, MongoDB, MSSQL, and Redis under the same Python interface and switch engines without rewriting connection code.
+- **Comparing databases for an MVP** - run PostgreSQL, MySQL, MongoDB, MSSQL, Redis, and Neo4j under the same Python interface and switch engines without rewriting connection code.
 - **Building a local RAG prototype** - spin up a backing store, test your retrieval pipeline, then swap from PostgreSQL to MongoDB in one config change without touching orchestration code.
+- **GraphRAG experiments** - provision a Neo4j container, build knowledge graphs from your documents, and run multi-hop traversal queries with LlamaIndex or LangChain.
 
 ## Supported Databases
 
@@ -34,6 +26,7 @@ The following databases are supported:
 [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/docs/)
 [![SQL Server](https://img.shields.io/badge/SQL_Server-CC2927?logo=microsoftsqlserver&logoColor=white)](https://learn.microsoft.com/en-us/sql/sql-server/)
 [![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](https://redis.io/docs/)
+[![Neo4j](https://img.shields.io/badge/Neo4j-008CC1?logo=neo4j&logoColor=white)](https://neo4j.com/docs/)
 
 ## Prerequisites
 
@@ -45,6 +38,7 @@ The following databases are supported:
 - `pymongo` for MongoDB
 - `pyodbc` for MSSQL
 - `redis` for Redis
+- `neo4j` for Neo4j
 
 ## Installation
 
@@ -54,7 +48,7 @@ pip install py-dockerdb
 
 ## Usage
 
-The API is consistent across all five engines: define a config, call `create_db()`, run your workload, then tear down with `delete_db()`.
+The API is consistent across all engines: define a config, call `create_db()`, run your workload, then tear down with `delete_db()`.
 
 ### PostgreSQL example
 
@@ -91,6 +85,37 @@ conn.close()
 db_manager.delete_db(running_ok=True)
 ```
 
+### Neo4j / GraphRAG example
+
+```python
+import uuid
+from pathlib import Path
+from docker_db.dbs.neo4j_db import Neo4jConfig, Neo4jDB
+
+container_name = f"demo-neo4j-{uuid.uuid4().hex[:8]}"
+temp_dir = Path("tmp")
+temp_dir.mkdir(exist_ok=True)
+
+config = Neo4jConfig(
+    password="demopass",
+    project_name="demo",
+    container_name=container_name,
+    workdir=temp_dir.absolute(),
+)
+
+db_manager = Neo4jDB(config)
+db_manager.create_db()
+
+driver = db_manager.connection
+with driver.session() as session:
+    session.run("CREATE (n:Person {name: 'Alice'})")
+    result = session.run("MATCH (n:Person) RETURN n.name AS name")
+    print(result.single()["name"])  # Alice
+
+driver.close()
+db_manager.delete_db(running_ok=True)
+```
+
 ### More examples
 
 Full runnable notebooks for each engine are in the [`usage/`](./usage/) directory:
@@ -100,6 +125,7 @@ Full runnable notebooks for each engine are in the [`usage/`](./usage/) director
 - [MongoDB](./usage/mongo_example.ipynb)
 - [MSSQL](./usage/mssql_example.ipynb)
 - [Redis](./usage/redis_example.ipynb)
+- [Neo4j / GraphRAG](./usage/neo4j_example.ipynb)
 - [Container lifecycle and management](./usage/db_management_example.ipynb)
 
 ### Seeding data for demos and workshops
@@ -121,9 +147,10 @@ conn_string = db_manager.connection_string(sql_magic=True)
 
 ## Roadmap
 
-Docker-friendly vector backends that can be run locally without paid licenses:
+Docker-friendly vector and graph backends that can be run locally without paid licenses:
 
 - [x] PostgreSQL + `pgvector`
+- [x] Neo4j (knowledge graphs, GraphRAG)
 - [ ] Qdrant
 - [ ] Chroma
 - [ ] Weaviate
@@ -148,6 +175,8 @@ python -m pytest -vv -s tests/test_postgres.py
 python -m pytest -vv -s tests/test_mysql.py
 python -m pytest -vv -s tests/test_mongodb.py
 python -m pytest -vv -s tests/test_mssql.py
+python -m pytest -vv -s tests/test_redis.py
+python -m pytest -vv -s tests/test_neo4j.py
 python -m pytest -vv -s tests/test_notebooks.py
 ```
 
