@@ -52,6 +52,7 @@ graph = [
   "neo4j",
   "llama-index-graph-stores-neo4j",
   "langchain-community",
+]
 rag = [
   "llama-index",
   "llama-index-vector-stores-postgres",
