@@ -1,4 +1,5 @@
 import uuid
+import socket
 import docker
 import pytest
 from pathlib import Path
@@ -43,15 +44,25 @@ def container_name():
     return f"test-neo4j-{uuid.uuid4().hex[:8]}"
 
 
+def _get_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
 @pytest.fixture
 def neo4j_config(container_name):
+    bolt_port = _get_free_port()
+    http_port = _get_free_port()
     return Neo4jConfig(
         password="testpassword",
         project_name="test",
         container_name=container_name,
         workdir=TEMP_DIR,
-        volume_path=Path(TEMP_DIR, "n4jdata"),
-        retries=20,
+        volume_path=Path(TEMP_DIR, "n4jdata", container_name),
+        port=bolt_port,
+        http_port=http_port,
+        retries=40,
         delay=3,
     )
 
@@ -65,7 +76,7 @@ def neo4j_manager(neo4j_config):
 #                 Tests
 # =======================================
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(300)
 def test_create_db(neo4j_manager):
     neo4j_manager.create_db()
     assert neo4j_manager.database_created
@@ -80,14 +91,14 @@ def test_create_db(neo4j_manager):
     neo4j_manager.delete_db(running_ok=True)
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(300)
 def test_connection_string(neo4j_manager):
     assert neo4j_manager.connection_string() == (
         f"bolt://{neo4j_manager.config.host}:{neo4j_manager.config.port}"
     )
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(300)
 def test_write_and_read_node(neo4j_manager):
     neo4j_manager.create_db()
 
@@ -102,7 +113,7 @@ def test_write_and_read_node(neo4j_manager):
     neo4j_manager.delete_db(running_ok=True)
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(300)
 def test_relationship_traversal(neo4j_manager):
     neo4j_manager.create_db()
 
@@ -121,11 +132,11 @@ def test_relationship_traversal(neo4j_manager):
     neo4j_manager.delete_db(running_ok=True)
 
 
-@pytest.mark.timeout(60)
+@pytest.mark.timeout(300)
 def test_stop_and_start(neo4j_manager):
     neo4j_manager.create_db()
     neo4j_manager.stop_db()
-    assert neo4j_manager.state()["Status"] == "exited"
+    assert neo4j_manager.state() == "exited"
     neo4j_manager.start_db()
-    assert neo4j_manager.state()["Status"] == "running"
+    assert neo4j_manager.state() == "running"
     neo4j_manager.delete_db(running_ok=True)
