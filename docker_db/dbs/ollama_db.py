@@ -18,6 +18,7 @@ from docker_db.docker import ContainerConfig, ContainerManager
 
 class OllamaConfig(ContainerConfig):
     """Configuration for an Ollama container."""
+
     database: str = Field(
         default="ollama",
         description="Compatibility field required by the base container manager API.",
@@ -111,9 +112,7 @@ class OllamaDB(ContainerManager):
         db_name: str | None = None,
         container: Container | None = None,
     ):
-        """
-        Validate Ollama API availability and optionally pull a model.
-        """
+        """Validate Ollama API availability and optionally pull a model."""
         container = container or self.client.containers.get(self.config.container_name)
         container.reload()
         if not container.attrs.get("State", {}).get("Running", False):
@@ -129,9 +128,7 @@ class OllamaDB(ContainerManager):
         return container
 
     def _wait_for_db(self, container: Container | None = None) -> bool:
-        """
-        Wait until Ollama API is accepting connections and ready.
-        """
+        """Wait until Ollama API is accepting connections and ready."""
         try:
             container = container or self.client.containers.get(self.config.container_name)
             for _ in range(self.config.retries):
@@ -146,9 +143,7 @@ class OllamaDB(ContainerManager):
         return self._wait_for_api_ready()
 
     def pull_model(self, model: str):
-        """
-        Pull a model via Ollama API.
-        """
+        """Pull a model via Ollama API."""
         response = requests.post(
             f"{self.base_url}/api/pull",
             json={"model": model, "stream": False},
@@ -159,9 +154,7 @@ class OllamaDB(ContainerManager):
         return response.json()
 
     def list_models(self) -> list[dict]:
-        """
-        List locally available models.
-        """
+        """List locally available models."""
         response = requests.get(f"{self.base_url}/api/tags", timeout=10)
         if response.status_code != 200:
             raise RuntimeError(f"Failed to list models: {response.text}")
@@ -169,8 +162,6 @@ class OllamaDB(ContainerManager):
         return payload.get("models", [])
 
     def test_connection(self):
-        """
-        Ensure Ollama API is reachable.
-        """
+        """Ensure Ollama API is reachable."""
         if not self._wait_for_api_ready():
             raise ConnectionError("Ollama API is not reachable.")

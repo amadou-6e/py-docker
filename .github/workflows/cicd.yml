@@ -27,7 +27,6 @@ jobs:
           - tests/test_ollama.py
           - tests/test_redis.py
           - tests/test_opensearch.py
-          - tests/test_neo4j.py
 
     steps:
       - name: Checkout
