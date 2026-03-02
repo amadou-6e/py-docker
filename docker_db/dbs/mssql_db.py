@@ -44,6 +44,7 @@ class MSSQLConfig(ContainerConfig):
     It provides the necessary settings to create and connect to a Microsoft SQL Server 
     database running in a Docker container.
     """
+
     user: str = Field(description="SQL Server username for database access")
     password: str = Field(description="SQL Server password for database access")
     database: str = Field(description="Name of the default database to create")
@@ -82,6 +83,7 @@ class MSSQLDB(ContainerManager):
     AssertionError
         If Docker is not running when initializing.
     """
+
     _user_ready_on_start = False
 
     def __init__(self, config: MSSQLConfig):
@@ -337,8 +339,7 @@ class MSSQLDB(ContainerManager):
             return False
 
     def _convert_script_to_unix(self):
-        """Disable conversion of scripts to Unix format.
-        """
+        """Disable conversion of scripts to Unix format."""
         pass
 
     def _create_db(

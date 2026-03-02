@@ -14,6 +14,7 @@ SHORTHAND_MAP = {
     "cassandra": "cs",
     "neo4j": "n4j",
     "redis": "rd",
+    "opensearch": "os",
 }
 
 DEFAULT_IMAGE_MAP = {
@@ -25,11 +26,13 @@ DEFAULT_IMAGE_MAP = {
     "cassandra": "cassandra:4",
     "neo4j": "neo4j:5",
     "redis": "redis:7",
+    "opensearch": "opensearchproject/opensearch:2.13.0",
 }
 
 
 class ContainerConfig(BaseModel):
     """Configuration for a Docker container running a database."""
+
     host: str = Field(
         default="127.0.0.1",
         description="The hostname where the PostgreSQL server will be accessible",
@@ -80,6 +83,14 @@ class ContainerConfig(BaseModel):
     _type: str | None = None  # internal field, not exposed via schema
 
     def model_post_init(self, __context__):
+        """
+        Populate defaults derived from database type and working directory.
+
+        Parameters
+        ----------
+        __context__ : Any
+            Optional pydantic post-init context passed by the model runtime.
+        """
         self.workdir = (self.workdir or Path(os.getenv("WORKDIR", os.getcwd()))).resolve()
         self.image_name = self.image_name or DEFAULT_IMAGE_MAP[self._type]
         self.container_name = self.container_name or f"{self.project_name}-{self._type}-{uuid.uuid4().hex[:8]}"

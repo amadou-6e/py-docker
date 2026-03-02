@@ -5,6 +5,8 @@ from docker_db.dbs import (
     MongoDBConfig,
     MSSQLConfig,
     MSSQLDB,
+    OpenSearchConfig,
+    OpenSearchDB,
     RedisConfig,
     RedisDB,
     MySQLConfig,
@@ -29,6 +31,8 @@ __all__ = [
     "MSSQLConfig",
     "Neo4jDB",
     "Neo4jConfig",
+    "OpenSearchDB",
+    "OpenSearchConfig",
     "RedisDB",
     "RedisConfig",
 ]

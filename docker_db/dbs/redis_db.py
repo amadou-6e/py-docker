@@ -18,6 +18,7 @@ from docker_db.docker import ContainerConfig, ContainerManager
 
 class RedisConfig(ContainerConfig):
     """Configuration for Redis container."""
+
     database: int = Field(default=0, description="Redis logical database index")
     port: int = Field(default=6379, description="Port on which Redis listens")
     env_vars: dict = Field(
@@ -53,7 +54,19 @@ class RedisDB(ContainerManager):
         )
 
     def connection_string(self, db_name: int | None = None) -> str:
-        """Get Redis connection string."""
+        """
+        Get Redis connection string.
+
+        Parameters
+        ----------
+        db_name : int, optional
+            Redis logical database index. If omitted, uses configured default.
+
+        Returns
+        -------
+        str
+            Redis URI for host, port, and logical database.
+        """
         database = self.config.database if db_name is None else db_name
         return f"redis://{self.config.host}:{self.config.port}/{database}"
 

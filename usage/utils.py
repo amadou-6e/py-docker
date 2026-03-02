@@ -1,8 +1,18 @@
+"""Notebook display helpers for rendering shell and SQL script files."""
+
 from pathlib import Path
 from IPython.display import Markdown, display
 
 
 def display_bash_script(script_path: str | Path):
+    """
+    Render a shell script file as a markdown code block.
+
+    Parameters
+    ----------
+    script_path : str or Path
+        Path to a shell script file.
+    """
     script_path = Path(script_path)
     if not script_path.exists():
         raise FileNotFoundError(f"Script file {script_path} does not exist.")
@@ -14,9 +24,11 @@ def display_bash_script(script_path: str | Path):
 def display_sql_script(script_path):
     """
     Display SQL script content in a nicely formatted markdown code block.
-    
-    Args:
-        script_path (Path or str): Path to the SQL script file
+
+    Parameters
+    ----------
+    script_path : Path or str
+        Path to the SQL script file.
     """
     script_path = Path(script_path)
 
