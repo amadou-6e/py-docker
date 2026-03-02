@@ -13,6 +13,7 @@ SHORTHAND_MAP = {
     "mongodb": "mg",
     "cassandra": "cs",
     "redis": "rd",
+    "opensearch": "os",
 }
 
 DEFAULT_IMAGE_MAP = {
@@ -23,6 +24,7 @@ DEFAULT_IMAGE_MAP = {
     "mongodb": "mongo:6",
     "cassandra": "cassandra:4",
     "redis": "redis:7",
+    "opensearch": "opensearchproject/opensearch:2.13.0",
 }
 
 class ContainerConfig(BaseModel):

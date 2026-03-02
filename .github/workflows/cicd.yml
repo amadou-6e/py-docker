@@ -25,6 +25,7 @@ jobs:
           - tests/test_mongodb.py
           - tests/test_mssql.py
           - tests/test_redis.py
+          - tests/test_opensearch.py
 
     steps:
       - name: Checkout
@@ -62,4 +63,4 @@ jobs:
         run: docker info
 
       - name: Run tests
-        run: python -m pytest -vv -s --timeout=1200 --timeout-method=thread ${{ matrix.test_file }}
+        run: python -m pytest -vv -s --timeout=600 --timeout-method=thread ${{ matrix.test_file }}

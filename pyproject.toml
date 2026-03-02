@@ -19,6 +19,7 @@ dependencies = [
   "pyodbc",
   "mysql-connector-python",
   "redis",
+  "opensearch-py",
   "pydos2unix",
 ]
 classifiers = [
