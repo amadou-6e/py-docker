@@ -302,15 +302,14 @@ def test_create_container_inspects_config(
     sources = {m["Source"] for m in mounts}
     assert str(mysql_init_config.volume_path.resolve()) in sources
 
-    # Extract the targets to verify the init script directory is mounted
-    # This is more reliable than checking the specific source path
+    # Verify the init script file is mounted under the init directory.
     targets = {m["Destination"] for m in mounts}
-    assert "/docker-entrypoint-initdb.d" in targets
+    assert any(t.startswith("/docker-entrypoint-initdb.d/") for t in targets)
 
     # Instead of checking the exact path match, verify the mount is present
     init_script_mount = None
     for mount in mounts:
-        if mount["Destination"] == "/docker-entrypoint-initdb.d":
+        if mount["Destination"].startswith("/docker-entrypoint-initdb.d/"):
             init_script_mount = mount
             break
 

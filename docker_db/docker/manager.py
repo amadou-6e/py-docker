@@ -590,10 +590,12 @@ class ContainerManager:
             if not self.config.init_script.exists():
                 raise FileNotFoundError(f"Init script {self.config.init_script} does not exist.")
 
+            target_root = self._get_init_script_target().rstrip("/")
+            target_path = f"{target_root}/{self.config.init_script.name}"
             mounts.append(
                 docker.types.Mount(
-                    target=self._get_init_script_target(),
-                    source=str(self.config.init_script.parent.resolve()),
+                    target=target_path,
+                    source=str(self.config.init_script.resolve()),
                     type='bind',
                     read_only=True,
                 ))
