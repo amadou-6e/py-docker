@@ -16,6 +16,13 @@ class OpenSearchConfig(ContainerConfig):
     """Configuration for OpenSearch container."""
     database: str = Field(default="documents", description="Default OpenSearch index name")
     port: int = Field(default=9200, description="OpenSearch HTTP API port")
+    use_bind_mount: bool = Field(
+        default=False,
+        description=(
+            "If True, bind-mount volume_path to /usr/share/opensearch/data. "
+            "Disabled by default to avoid permission issues in CI."
+        ),
+    )
     env_vars: dict = Field(
         default_factory=dict,
         description="A dictionary of environment variables to set in the container",
@@ -67,6 +74,10 @@ class OpenSearchDB(ContainerManager):
         return default_env_vars
 
     def _get_volume_mounts(self):
+        if not self.config.use_bind_mount:
+            return []
+        if self.config.volume_path is None:
+            return []
         return [
             docker.types.Mount(
                 target="/usr/share/opensearch/data",
