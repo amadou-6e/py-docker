@@ -1,6 +1,4 @@
-"""
-OpenSearch container management module.
-"""
+"""OpenSearch container management module."""
 import time
 
 import docker
@@ -14,6 +12,7 @@ from docker_db.docker import ContainerConfig, ContainerManager
 
 class OpenSearchConfig(ContainerConfig):
     """Configuration for OpenSearch container."""
+
     database: str = Field(default="documents", description="Default OpenSearch index name")
     port: int = Field(default=9200, description="OpenSearch HTTP API port")
     use_bind_mount: bool = Field(
@@ -60,7 +59,21 @@ class OpenSearchDB(ContainerManager):
         )
 
     def connection_string(self, db_name: str = None, sql_magic: bool = False) -> str:
-        """Get OpenSearch base URL."""
+        """
+        Get OpenSearch base URL.
+
+        Parameters
+        ----------
+        db_name : str, optional
+            Unused for OpenSearch. Present for interface compatibility.
+        sql_magic : bool, optional
+            Unused for OpenSearch. Present for interface compatibility.
+
+        Returns
+        -------
+        str
+            Base HTTP URL for the OpenSearch endpoint.
+        """
         return f"http://{self.config.host}:{self.config.port}"
 
     def _get_environment_vars(self):
@@ -105,9 +118,7 @@ class OpenSearchDB(ContainerManager):
         db_name: str | None = None,
         container: Container | None = None,
     ):
-        """
-        Create the default OpenSearch index if it does not exist.
-        """
+        """Create the default OpenSearch index if it does not exist."""
         container = container or self.client.containers.get(self.config.container_name)
         container.reload()
         if not container.attrs.get("State", {}).get("Running", False):
@@ -129,9 +140,7 @@ class OpenSearchDB(ContainerManager):
         raise RuntimeError(f"Failed to initialize OpenSearch index '{index_name}': {last_error}")
 
     def _wait_for_db(self, container: Container | None = None) -> bool:
-        """
-        Wait until OpenSearch API is reachable.
-        """
+        """Wait until OpenSearch API is reachable."""
         try:
             container = container or self.client.containers.get(self.config.container_name)
             for _ in range(self.config.retries):
@@ -169,9 +178,7 @@ class OpenSearchDB(ContainerManager):
         return False
 
     def test_connection(self):
-        """
-        Ensure OpenSearch API is reachable.
-        """
+        """Ensure OpenSearch API is reachable."""
         if not self._wait_for_db():
             raise ConnectionError("OpenSearch API is not reachable.")
         try:

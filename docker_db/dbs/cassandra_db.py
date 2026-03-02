@@ -1,4 +1,4 @@
-'''
+"""Cassandra container management module."""
 import os
 import time
 import docker
@@ -13,6 +13,8 @@ from docker_db.docker import ContainerConfig, ContainerManager
 
 
 class CassandraConfig(ContainerConfig):
+    """Configuration for a Cassandra container."""
+
     user: str
     password: str
     keyspace: str  # Equivalent to database in MongoDB
@@ -22,9 +24,7 @@ class CassandraConfig(ContainerConfig):
 
 
 class Cassandra(ContainerManager):
-    """
-    Manages lifecycle of a Cassandra container via Docker SDK.
-    """
+    """Manage lifecycle of a Cassandra container via Docker SDK."""
 
     def __init__(self, config):
         self.config: CassandraConfig = config
@@ -33,9 +33,7 @@ class Cassandra(ContainerManager):
 
     @property
     def connection(self):
-        """
-        Establish a new Cassandra connection.
-        """
+        """Establish a new Cassandra connection."""
         auth_provider = PlainTextAuthProvider(username=self.config.user,
                                               password=self.config.password)
 
@@ -46,18 +44,14 @@ class Cassandra(ContainerManager):
         return cluster
 
     def _get_auth_provider(self, is_root=True):
-        """
-        Get auth provider with appropriate credentials.
-        """
+        """Get auth provider with appropriate credentials."""
         username = self.config.root_username if is_root else self.config.user
         password = self.config.root_password if is_root else self.config.password
 
         return PlainTextAuthProvider(username=username, password=password)
 
     def _create_container(self, force=False):
-        """
-        Create a new Cassandra container with volume, env and port mappings.
-        """
+        """Create a Cassandra container with volume, env, and port mappings."""
         if self._is_container_created():
             if force:
                 print(f"Container {self.config.container_name} already exists. Removing it.")
@@ -174,9 +168,7 @@ class Cassandra(ContainerManager):
             raise RuntimeError(f"Failed to create keyspace: {e}")
 
     def _wait_for_db(self, container=None) -> bool:
-        """
-        Wait until Cassandra is accepting connections and ready.
-        """
+        """Wait until Cassandra is accepting connections and ready."""
         try:
             container = container or self.client.containers.get(self.config.container_name)
             for _ in range(self.config.retries):
@@ -217,4 +209,3 @@ class Cassandra(ContainerManager):
             time.sleep(self.config.delay)
 
         return False
-'''

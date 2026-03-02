@@ -1,3 +1,5 @@
+"""Setuptools shim using metadata from ``pyproject.toml``."""
+
 from setuptools import setup
 
 

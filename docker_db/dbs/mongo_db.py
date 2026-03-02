@@ -43,6 +43,7 @@ class MongoDBConfig(ContainerConfig):
     It provides the necessary settings to create and connect to a MongoDB
     database running in a Docker container.
     """
+
     user: str = Field(description="MongoDB username for database access")
     password: str = Field(description="MongoDB password for database access")
     database: str = Field(description="Name of the default database to create")
