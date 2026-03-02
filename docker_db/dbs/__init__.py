@@ -4,6 +4,7 @@ from docker_db.dbs.mongo_db import MongoDB, MongoDBConfig
 from docker_db.dbs.postgres_db import PostgresDB, PostgresConfig
 from docker_db.dbs.mysql_db import MySQLDB, MySQLConfig
 from docker_db.dbs.mssql_db import MSSQLDB, MSSQLConfig
+from docker_db.dbs.redis_db import RedisDB, RedisConfig
 
 __all__ = [
     "MongoDB",
@@ -14,4 +15,6 @@ __all__ = [
     "MySQLConfig",
     "MSSQLDB",
     "MSSQLConfig",
+    "RedisDB",
+    "RedisConfig",
 ]
