@@ -71,6 +71,16 @@ def mysql_init_config(
     dockerfile: Path,
     init_script: Path,
 ) -> MySQLConfig:
+    """
+    Mysql init config.
+
+    Parameters
+    ----------
+    dockerfile : Any
+        Fixture or test parameter.
+    init_script : Any
+        Fixture or test parameter.
+    """
     mysqldata = Path(TEMP_DIR, "mysqldata")
     mysqldata.mkdir(parents=True, exist_ok=True)
 
@@ -99,13 +109,28 @@ def mysql_init_config(
 
 @pytest.fixture(scope="module")
 def mysql_manager(mysql_config: MySQLConfig):
+    """
+    Mysql manager.
+
+    Parameters
+    ----------
+    mysql_config : Any
+        Configuration fixture.
+    """
     manager = MySQLDB(mysql_config)
     yield manager
 
 
 @pytest.fixture(scope="module")
 def mysql_init_manager(mysql_init_config):
-    """Fixture that provides a MySQLDB instance with test config."""
+    """
+    Fixture that provides a MySQLDB instance with test config.
+
+    Parameters
+    ----------
+    mysql_init_config : Any
+        Configuration fixture.
+    """
     manager = MySQLDB(config=mysql_init_config)
     yield manager
 
@@ -118,7 +143,16 @@ def mysql_image(
     mysql_config: MySQLConfig,
     mysql_manager: MySQLDB,
 ) -> Image:
-    """Check if the given MySQL image exists."""
+    """
+    Check if the given MySQL image exists.
+
+    Parameters
+    ----------
+    mysql_config : Any
+        Configuration fixture.
+    mysql_manager : Any
+        Database manager fixture.
+    """
     mysql_manager._build_image()
     client = docker.from_env()
     assert client.images.get(mysql_config.image_name), "Image should exist after building"
@@ -130,7 +164,16 @@ def mysql_init_image(
     mysql_init_config: MySQLConfig,
     mysql_init_manager: MySQLDB,
 ) -> Image:
-    """Check if the given MySQL image with init script exists."""
+    """
+    Check if the given MySQL image with init script exists.
+
+    Parameters
+    ----------
+    mysql_init_config : Any
+        Configuration fixture.
+    mysql_init_manager : Any
+        Database manager fixture.
+    """
     mysql_init_manager._build_image()
     client = docker.from_env()
     assert client.images.get(mysql_init_config.image_name), "Image should exist after building"
@@ -139,7 +182,14 @@ def mysql_init_image(
 
 @pytest.fixture
 def remove_test_image(mysql_config: MySQLConfig):
-    """Helper to remove the test image."""
+    """
+    Helper to remove the test image.
+
+    Parameters
+    ----------
+    mysql_config : Any
+        Configuration fixture.
+    """
     try:
         client = docker.from_env()
         client.images.remove(mysql_config.image_name, force=True)
@@ -162,6 +212,18 @@ def mysql_container(
     mysql_image: Image,
     cleanup_temp_dir,
 ):
+    """
+    Mysql container.
+
+    Parameters
+    ----------
+    mysql_manager : Any
+        Database manager fixture.
+    mysql_image : Any
+        Fixture or test parameter.
+    cleanup_temp_dir : Any
+        Fixture or test parameter.
+    """
     container = mysql_manager._create_container(force=True)
     return container
 
@@ -172,6 +234,18 @@ def mysql_init_container(
     mysql_init_image: Image,
     cleanup_temp_dir,
 ):
+    """
+    Mysql init container.
+
+    Parameters
+    ----------
+    mysql_init_manager : Any
+        Database manager fixture.
+    mysql_init_image : Any
+        Fixture or test parameter.
+    cleanup_temp_dir : Any
+        Fixture or test parameter.
+    """
     container = mysql_init_manager._create_container(force=True)
     return container
 
@@ -179,6 +253,14 @@ def mysql_init_container(
 @pytest.fixture
 def remove_test_container(mysql_config):
     # ensure no leftover container
+    """
+    Remove test container.
+
+    Parameters
+    ----------
+    mysql_config : Any
+        Configuration fixture.
+    """
     client = docker.from_env()
     try:
         c = client.containers.get(mysql_config.container_name)
@@ -188,6 +270,14 @@ def remove_test_container(mysql_config):
 
 
 def test_docker_running(mysql_manager: MySQLDB):
+    """
+    Test docker running.
+
+    Parameters
+    ----------
+    mysql_manager : Any
+        Database manager fixture.
+    """
     import docker
     client = docker.from_env()
     client.ping()
@@ -199,7 +289,16 @@ def create_test_image(
     mysql_config: MySQLConfig,
     mysql_manager: MySQLDB,
 ):
-    """Check if the given image exists."""
+    """
+    Check if the given image exists.
+
+    Parameters
+    ----------
+    mysql_config : Any
+        Configuration fixture.
+    mysql_manager : Any
+        Database manager fixture.
+    """
     mysql_manager._build_image()
     client = docker.from_env()
     assert client.images.get(mysql_config.image_name), "Image should exist after building"
@@ -239,7 +338,18 @@ def test_build_image_first_time(
     mysql_init_manager: MySQLDB,
     remove_test_image,
 ):
-    """Test building the image for the first time."""
+    """
+    Test building the image for the first time.
+
+    Parameters
+    ----------
+    mysql_init_config : Any
+        Configuration fixture.
+    mysql_init_manager : Any
+        Database manager fixture.
+    remove_test_image : Any
+        Cleanup helper fixture.
+    """
     f = io.StringIO()
 
     with redirect_stdout(f):
@@ -259,7 +369,18 @@ def test_build_image_second_time(
     mysql_init_manager: MySQLDB,
     create_test_image,
 ):
-    """Test that building the image a second time skips the build process."""
+    """
+    Test that building the image a second time skips the build process.
+
+    Parameters
+    ----------
+    mysql_init_config : Any
+        Configuration fixture.
+    mysql_init_manager : Any
+        Database manager fixture.
+    create_test_image : Any
+        Fixture or test parameter.
+    """
     f = io.StringIO()
 
     with redirect_stdout(f):
@@ -280,6 +401,16 @@ def test_create_container_inspects_config(
     mysql_init_manager: MySQLDB,
 ):
     # first ensure image exists
+    """
+    Test create container inspects config.
+
+    Parameters
+    ----------
+    mysql_init_config : Any
+        Configuration fixture.
+    mysql_init_manager : Any
+        Database manager fixture.
+    """
     mysql_init_manager._build_image()
 
     # create (but do not start) the container
@@ -302,15 +433,14 @@ def test_create_container_inspects_config(
     sources = {m["Source"] for m in mounts}
     assert str(mysql_init_config.volume_path.resolve()) in sources
 
-    # Extract the targets to verify the init script directory is mounted
-    # This is more reliable than checking the specific source path
+    # Verify the init script file is mounted under the init directory.
     targets = {m["Destination"] for m in mounts}
-    assert "/docker-entrypoint-initdb.d" in targets
+    assert any(t.startswith("/docker-entrypoint-initdb.d/") for t in targets)
 
     # Instead of checking the exact path match, verify the mount is present
     init_script_mount = None
     for mount in mounts:
-        if mount["Destination"] == "/docker-entrypoint-initdb.d":
+        if mount["Destination"].startswith("/docker-entrypoint-initdb.d/"):
             init_script_mount = mount
             break
 
@@ -338,6 +468,18 @@ def test_container_start_and_connect(
     mysql_init_manager: MySQLDB,
 ):
     # Ensure container starts and database is reachable
+    """
+    Test container start and connect.
+
+    Parameters
+    ----------
+    mysql_init_config : Any
+        Configuration fixture.
+    mysql_init_container : Any
+        Container fixture.
+    mysql_init_manager : Any
+        Database manager fixture.
+    """
     Path(mysql_init_config.volume_path).mkdir(parents=True, exist_ok=True)
     mysql_init_manager._start_container(mysql_init_container)
     mysql_init_manager.test_connection()
@@ -365,6 +507,18 @@ def test_stop_and_remove_container(
     mysql_init_manager: MySQLDB,
 ):
     # Ensure container starts and database is reachable
+    """
+    Test stop and remove container.
+
+    Parameters
+    ----------
+    mysql_init_config : Any
+        Configuration fixture.
+    mysql_init_container : Any
+        Container fixture.
+    mysql_init_manager : Any
+        Database manager fixture.
+    """
     Path(mysql_init_config.volume_path).mkdir(parents=True, exist_ok=True)
     mysql_init_manager._start_container(mysql_init_container)
     mysql_init_manager.test_connection()
@@ -418,6 +572,18 @@ def test_create_db(
     init_script_path: Path | None,
     image_name: str | None,
 ):
+    """
+    Test create db.
+
+    Parameters
+    ----------
+    docker_file_path : Any
+        Fixture or test parameter.
+    init_script_path : Any
+        Fixture or test parameter.
+    image_name : Any
+        Fixture or test parameter.
+    """
     name = f"test-mysql-{uuid.uuid4().hex[:8]}"
     config = MySQLConfig(
         user="testuser",
@@ -453,6 +619,16 @@ def test_stop_db(
     mysql_init_config: MySQLConfig,
     mysql_init_manager: MySQLDB,
 ):
+    """
+    Test stop db.
+
+    Parameters
+    ----------
+    mysql_init_config : Any
+        Configuration fixture.
+    mysql_init_manager : Any
+        Database manager fixture.
+    """
     mysql_init_manager.create_db()
     # Give MySQL a moment to finish init
     time.sleep(5)
@@ -483,6 +659,18 @@ def test_delete_db(
     mysql_init_container: Container,
 ):
     # Ensure container starts and database is reachable
+    """
+    Test delete db.
+
+    Parameters
+    ----------
+    mysql_init_config : Any
+        Configuration fixture.
+    mysql_init_manager : Any
+        Database manager fixture.
+    mysql_init_container : Any
+        Container fixture.
+    """
     Path(mysql_init_config.volume_path).mkdir(parents=True, exist_ok=True)
     mysql_init_manager._start_container()
     mysql_init_manager.test_connection()

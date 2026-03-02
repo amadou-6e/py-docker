@@ -1,3 +1,5 @@
+"""Sphinx configuration for project documentation."""
+
 # Configuration file for the Sphinx documentation builder.
 #
 # For the full list of built-in configuration values, see the documentation:
@@ -7,8 +9,11 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 import os
 import sys
+from pathlib import Path
 
-sys.path.insert(0, os.path.abspath('../..'))
+DOCS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = DOCS_DIR.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 project = 'py-dockerdb'
 copyright = '2025, Amadou Wolfgang Cisse'

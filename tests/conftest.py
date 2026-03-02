@@ -1,3 +1,5 @@
+"""Shared pytest fixtures and helpers for container-based tests."""
+
 import sys
 import os
 from pathlib import Path
@@ -53,6 +55,21 @@ def _pick_container_name(funcargs: dict[str, Any]) -> str | None:
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
+    """
+    Expose setup/call/teardown reports on each test item.
+
+    Parameters
+    ----------
+    item : pytest.Item
+        Test item being reported.
+    call : pytest.CallInfo
+        Call phase metadata provided by pytest.
+
+    Yields
+    ------
+    object
+        Pytest hookwrapper outcome object.
+    """
     outcome = yield
     report = outcome.get_result()
     setattr(item, f"rep_{report.when}", report)

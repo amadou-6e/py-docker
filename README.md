@@ -1,33 +1,50 @@
-# Docker-DB
+# py-dockerdb
 
-A Python library for managing containerized databases through Docker. This library provides a simple interface for creating, configuring, and managing database containers for development and testing environments, from within python.
+*Pythonic Docker database management for notebooks, tutorials, and fast MVPs.*
 
-## Features
+[![Build](https://img.shields.io/github/actions/workflow/status/amadou-6e/docker-db/cicd.yml?branch=main&label=tests)](https://github.com/amadou-6e/docker-db/actions/workflows/cicd.yml)
+[![PyPI](https://img.shields.io/pypi/v/py-dockerdb)](https://pypi.org/project/py-dockerdb/)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
-The following features are supported:
+`py-dockerdb` gives you easy Docker database setup in Python for PostgreSQL, MySQL, MongoDB, Microsoft SQL Server, and Redis. It is built for people who teach, demo, and prototype with notebooks or scripts and need repeatable local databases in minutes. Instead of writing Docker commands and per-engine setup code, you use one API to create, start, connect, and clean up containers.
 
-- Easy setup and management of database containers
-- Automated container lifecycle management
-- Standardized configuration interfaces
-- Connection management and health checking
-- Volume persistence capabilities
-- Initialization script support
+Switch from PostgreSQL to MongoDB and back without changing a line of connection code. This makes side-by-side database comparison a first-class workflow - useful for MVPs where the right engine isn't decided yet, and for RAG experiments where you want to test one storage backend, then swap it out without rewriting environment glue.
 
-The following features are implemented but not tested:
-- Enable/Disable error if already created
-- startdb
-- restartdb
-- init scripts to examples
+If you teach SQL or data workflows, it removes the environment-setup section from your slides entirely: every student runs the same two lines and gets a working database.
 
+<<<<<<< HEAD
 The following databases are supported:
   - MongoDB
   - Microsoft SQL Server
   - PostgreSQL
   - MySQL
   - Ollama (local LLM runtime)
+=======
+## When to use this
+>>>>>>> main
 
-These databases might be added in the future:
-- Cassandra
+- **Teaching a SQL workshop or notebook tutorial** - every learner starts from the same environment with no per-machine Docker setup required.
+- **Comparing databases for an MVP** - run PostgreSQL, MySQL, MongoDB, MSSQL, and Redis under the same Python interface and switch engines without rewriting connection code.
+- **Building a local RAG prototype** - spin up a backing store, test your retrieval pipeline, then swap from PostgreSQL to MongoDB in one config change without touching orchestration code.
+
+## Supported Databases
+
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/docs/)
+[![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)](https://dev.mysql.com/doc/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/docs/)
+[![SQL Server](https://img.shields.io/badge/SQL_Server-CC2927?logo=microsoftsqlserver&logoColor=white)](https://learn.microsoft.com/en-us/sql/sql-server/)
+[![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](https://redis.io/docs/)
+
+## Prerequisites
+
+- Python 3.7+
+- Docker installed and running
+- Database drivers (installed automatically with package dependencies):
+  - `psycopg2-binary` for PostgreSQL
+  - `mysql-connector-python` for MySQL
+- `pymongo` for MongoDB
+- `pyodbc` for MSSQL
+- `redis` for Redis
 
 ## Installation
 
@@ -35,142 +52,109 @@ These databases might be added in the future:
 pip install py-dockerdb
 ```
 
-## Requirements
+## Usage
 
-- Python 3.7+
-- Docker installed and running
-- Database-specific Python drivers:
-  - `pymongo` for MongoDB
-  - `pyodbc` for Microsoft SQL Server
-  - `psycopg2` for PostgreSQL
-  - `mysql-connector-python` for MySQL
+The API is consistent across all five engines: define a config, call `create_db()`, run your workload, then tear down with `delete_db()`.
 
-## Basic Usage
-
-Check out the following usage examples:
-
-### MongoDB Example
+### PostgreSQL example
 
 ```python
-from docker_db.mongodb import MongoDBConfig, MongoDB
-
-# Create configuration
-config = MongoDBConfig(
-    user="testuser",
-    password="testpass",
-    database="testdb",
-    root_username="admin",
-    root_password="adminpass",
-    container_name="test-mongodb"
-)
-
-# Create and start MongoDB container
-db = MongoDB(config)
-db.create_db()
-
-# Connect to database
-client = db.connection
-# Use the database...
-
-# Stop the container when done
-db.stop_db()
-
-# Completely remove the container
-db.delete_db()
-```
-
-### PostgreSQL Example
-
-```python
-from docker_db.postgres import PostgresConfig, PostgresDB
-
-# Create configuration
-config = PostgresConfig(
-    user="testuser",
-    password="testpass",
-    database="testdb",
-    container_name="test-postgres"
-)
-
-# Create and start PostgreSQL container
-db = PostgresDB(config)
-db.create_db()
-
-# Connect to the database
-conn = db.connection
-
-# Create a cursor and execute a query
-cursor = conn.cursor()
-cursor.execute("SELECT version();")
-version = cursor.fetchone()
-print(f"PostgreSQL version: {version[0]}")
-
-# Clean up
-cursor.close()
-db.stop_db()
-```
-
-### Working with Initialization Scripts
-
-All database managers support initialization scripts that can be executed when the container is created:
-
-```python
+import uuid
 from pathlib import Path
-from docker_db.mongodb import MongoDBConfig, MongoDB
+from docker_db.dbs.postgres_db import PostgresConfig, PostgresDB
 
-config = MongoDBConfig(
-    user="testuser",
-    password="testpass",
-    database="testdb",
-    root_username="admin",
-    root_password="adminpass",
-    container_name="test-mongodb",
-    init_script=Path("./path/to/init_script.js")
-)
-```
-
-### Custom Volume Paths
-
-You can specify custom volume paths to persist data between container restarts:
-
-```python
-from pathlib import Path
-from docker_db.mssql import MSSQLConfig, MSSQLDB
-
-config = MSSQLConfig(
-    user="testuser",
-    password="testpass",
-    database="testdb",
-    sa_password="StrongPassword123!",
-    container_name="test-mssql",
-    volume_path=Path("./data/mssql")
-)
-```
-
-### Network Mode and Optional Port Mapping
-
-You can now run containers with explicit Docker network settings and optionally skip host port publishing.
-
-```python
-from docker_db.postgres_db import PostgresConfig, PostgresDB
+container_name = f"demo-postgres-{uuid.uuid4().hex[:8]}"
+temp_dir = Path("tmp")
+temp_dir.mkdir(exist_ok=True)
 
 config = PostgresConfig(
-    user="testuser",
-    password="testpass",
-    database="testdb",
-    network_mode="host",  # Linux native host networking
-    port=None,            # no host port mapping
+    user="demouser",
+    password="demopass",
+    database="demodb",
+    project_name="demo",
+    container_name=container_name,
+    workdir=temp_dir.absolute(),
+    retries=20,
+    delay=3,
 )
 
-db = PostgresDB(config)
-db.create_db()
+db_manager = PostgresDB(config)
+db_manager.create_db()
+
+conn = db_manager.connection
+cur = conn.cursor()
+cur.execute("SELECT version();")
+print(cur.fetchone())
+
+cur.close()
+conn.close()
+db_manager.delete_db(running_ok=True)
 ```
 
-Notes:
-- `network_mode="host"` works natively on Linux.
-- On Windows/macOS, host mode falls back to bridge mode.
-- If `port=None`, the manager skips host port mapping.
+### More examples
+
+Full runnable notebooks for each engine are in the [`usage/`](./usage/) directory:
+
+- [PostgreSQL](./usage/postgres_example.ipynb)
+- [MySQL](./usage/mysql_example.ipynb)
+- [MongoDB](./usage/mongo_example.ipynb)
+- [MSSQL](./usage/mssql_example.ipynb)
+- [Redis](./usage/redis_example.ipynb)
+- [Container lifecycle and management](./usage/db_management_example.ipynb)
+
+### Seeding data for demos and workshops
+
+Use `init_script` to preload tables or documents before handing the environment to students or running a live demo.
+
+```python
+config = PostgresConfig(
+    ...
+    init_script=Path("./configs/postgres/initdb.sh"),
+)
+```
+
+### SQL magic and client tool integration
+
+```python
+conn_string = db_manager.connection_string(sql_magic=True)
+```
+
+## Roadmap
+
+Docker-friendly vector backends that can be run locally without paid licenses:
+
+- [x] PostgreSQL + `pgvector`
+- [ ] Qdrant
+- [ ] Chroma
+- [ ] Weaviate
+- [ ] Milvus
+- [ ] OpenSearch (vector search)
+- [ ] Redis Stack (vector search)
+
+
+## Development
+
+```bash
+git clone https://github.com/amadou-6e/docker-db.git
+cd docker-db
+python -m pip install -e ".[test]"
+```
+
+## Testing
+
+```bash
+python -m pytest -vv -s tests/test_manager.py
+python -m pytest -vv -s tests/test_postgres.py
+python -m pytest -vv -s tests/test_mysql.py
+python -m pytest -vv -s tests/test_mongodb.py
+python -m pytest -vv -s tests/test_mssql.py
+python -m pytest -vv -s tests/test_notebooks.py
+```
+
+## Contributing
+
+Pull requests are welcome. Please include tests for behavior changes and keep examples runnable in the `usage/` notebooks when applicable.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License. See `LICENSE`.

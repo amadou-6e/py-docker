@@ -46,7 +46,14 @@ def init_script():
 # =======================================
 @pytest.fixture(autouse=True)
 def cleanup_temp_dir(request: pytest.FixtureRequest):
-    """Clean up vault files using OS-agnostic commands."""
+    """
+    Clean up vault files using OS-agnostic commands.
+
+    Parameters
+    ----------
+    request : Any
+        Pytest request object.
+    """
     _cleanup_test_mssql_containers()
     nuke_dir(TEMP_DIR)
     TEMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -92,6 +99,16 @@ def mssql_init_config(
     dockerfile: Path,
     init_script: Path,
 ) -> MSSQLConfig:
+    """
+    Mssql init config.
+
+    Parameters
+    ----------
+    dockerfile : Any
+        Fixture or test parameter.
+    init_script : Any
+        Fixture or test parameter.
+    """
     mssqldata = Path(TEMP_DIR, "mssqldata")
     mssqldata.mkdir(parents=True, exist_ok=True)
 
@@ -120,13 +137,28 @@ def mssql_init_config(
 
 @pytest.fixture(scope="module")
 def mssql_manager(mssql_config: MSSQLConfig):
+    """
+    Mssql manager.
+
+    Parameters
+    ----------
+    mssql_config : Any
+        Configuration fixture.
+    """
     manager = MSSQLDB(mssql_config)
     yield manager
 
 
 @pytest.fixture(scope="module")
 def mssql_init_manager(mssql_init_config):
-    """Fixture that provides a MSSQLDB instance with test config."""
+    """
+    Fixture that provides a MSSQLDB instance with test config.
+
+    Parameters
+    ----------
+    mssql_init_config : Any
+        Configuration fixture.
+    """
     manager = MSSQLDB(config=mssql_init_config)
     yield manager
 
@@ -139,7 +171,16 @@ def mssql_image(
     mssql_config: MSSQLConfig,
     mssql_manager: MSSQLDB,
 ) -> Image:
-    """Check if the given MSSQL image exists."""
+    """
+    Check if the given MSSQL image exists.
+
+    Parameters
+    ----------
+    mssql_config : Any
+        Configuration fixture.
+    mssql_manager : Any
+        Database manager fixture.
+    """
     mssql_manager._build_image()
     client = docker.from_env()
     assert client.images.get(mssql_config.image_name), "Image should exist after building"
@@ -151,7 +192,16 @@ def mssql_init_image(
     mssql_init_config: MSSQLConfig,
     mssql_init_manager: MSSQLDB,
 ) -> Image:
-    """Check if the given MSSQL image with init script exists."""
+    """
+    Check if the given MSSQL image with init script exists.
+
+    Parameters
+    ----------
+    mssql_init_config : Any
+        Configuration fixture.
+    mssql_init_manager : Any
+        Database manager fixture.
+    """
     mssql_init_manager._build_image()
     client = docker.from_env()
     assert client.images.get(mssql_init_config.image_name), "Image should exist after building"
@@ -160,7 +210,14 @@ def mssql_init_image(
 
 @pytest.fixture
 def remove_test_image(mssql_config: MSSQLConfig):
-    """Helper to remove the test image."""
+    """
+    Helper to remove the test image.
+
+    Parameters
+    ----------
+    mssql_config : Any
+        Configuration fixture.
+    """
     try:
         client = docker.from_env()
         client.images.remove(mssql_config.image_name, force=True)
@@ -182,6 +239,16 @@ def mssql_container(
     mssql_manager: MSSQLDB,
     mssql_image: Image,
 ):
+    """
+    Mssql container.
+
+    Parameters
+    ----------
+    mssql_manager : Any
+        Database manager fixture.
+    mssql_image : Any
+        Fixture or test parameter.
+    """
     container = mssql_manager._create_container()
     return container
 
@@ -191,6 +258,16 @@ def mssql_init_container(
     mssql_init_manager: MSSQLDB,
     mssql_init_image: Image,
 ):
+    """
+    Mssql init container.
+
+    Parameters
+    ----------
+    mssql_init_manager : Any
+        Database manager fixture.
+    mssql_init_image : Any
+        Fixture or test parameter.
+    """
     container = mssql_init_manager._create_container()
     return container
 
@@ -198,6 +275,14 @@ def mssql_init_container(
 @pytest.fixture
 def remove_test_container(mssql_config):
     # ensure no leftover container
+    """
+    Remove test container.
+
+    Parameters
+    ----------
+    mssql_config : Any
+        Configuration fixture.
+    """
     client = docker.from_env()
     try:
         c = client.containers.get(mssql_config.container_name)
@@ -207,6 +292,14 @@ def remove_test_container(mssql_config):
 
 
 def test_docker_running(mssql_manager: MSSQLDB):
+    """
+    Test docker running.
+
+    Parameters
+    ----------
+    mssql_manager : Any
+        Database manager fixture.
+    """
     import docker
     client = docker.from_env()
     client.ping()
@@ -218,7 +311,16 @@ def create_test_image(
     mssql_config: MSSQLConfig,
     mssql_manager: MSSQLDB,
 ):
-    """Check if the given image exists."""
+    """
+    Check if the given image exists.
+
+    Parameters
+    ----------
+    mssql_config : Any
+        Configuration fixture.
+    mssql_manager : Any
+        Database manager fixture.
+    """
     mssql_manager._build_image()
     client = docker.from_env()
     assert client.images.get(mssql_config.image_name), "Image should exist after building"
@@ -258,7 +360,18 @@ def test_build_image_first_time(
     mssql_init_manager: MSSQLDB,
     remove_test_image,
 ):
-    """Test building the image for the first time."""
+    """
+    Test building the image for the first time.
+
+    Parameters
+    ----------
+    mssql_init_config : Any
+        Configuration fixture.
+    mssql_init_manager : Any
+        Database manager fixture.
+    remove_test_image : Any
+        Cleanup helper fixture.
+    """
     f = io.StringIO()
 
     with redirect_stdout(f):
@@ -278,7 +391,18 @@ def test_build_image_second_time(
     mssql_init_manager: MSSQLDB,
     create_test_image,
 ):
-    """Test that building the image a second time skips the build process."""
+    """
+    Test that building the image a second time skips the build process.
+
+    Parameters
+    ----------
+    mssql_init_config : Any
+        Configuration fixture.
+    mssql_init_manager : Any
+        Database manager fixture.
+    create_test_image : Any
+        Fixture or test parameter.
+    """
     f = io.StringIO()
 
     with redirect_stdout(f):
@@ -299,6 +423,16 @@ def test_create_container_inspects_config(
     mssql_init_manager: MSSQLDB,
 ):
     # first ensure image exists
+    """
+    Test create container inspects config.
+
+    Parameters
+    ----------
+    mssql_init_config : Any
+        Configuration fixture.
+    mssql_init_manager : Any
+        Database manager fixture.
+    """
     mssql_init_manager._build_image()
 
     # create (but do not start) the container
@@ -344,6 +478,18 @@ def test_container_start_and_connect(
     mssql_init_manager: MSSQLDB,
 ):
     # Ensure container starts and database is reachable
+    """
+    Test container start and connect.
+
+    Parameters
+    ----------
+    mssql_init_config : Any
+        Configuration fixture.
+    mssql_init_container : Any
+        Container fixture.
+    mssql_init_manager : Any
+        Database manager fixture.
+    """
     Path(mssql_init_config.volume_path).mkdir(parents=True, exist_ok=True)
     mssql_init_manager._start_container(mssql_init_container)
 
@@ -366,6 +512,18 @@ def test_stop_and_remove_container(
     mssql_init_manager: MSSQLDB,
 ):
     # Ensure container starts and database is reachable
+    """
+    Test stop and remove container.
+
+    Parameters
+    ----------
+    mssql_init_config : Any
+        Configuration fixture.
+    mssql_init_container : Any
+        Container fixture.
+    mssql_init_manager : Any
+        Database manager fixture.
+    """
     Path(mssql_init_config.volume_path).mkdir(parents=True, exist_ok=True)
     mssql_init_manager._start_container(mssql_init_container)
 
@@ -411,6 +569,18 @@ def test_create_db(
     docker_file_path: Path | None,
     init_script_path: Path | None,
 ):
+    """
+    Test create db.
+
+    Parameters
+    ----------
+    image_name : Any
+        Fixture or test parameter.
+    docker_file_path : Any
+        Fixture or test parameter.
+    init_script_path : Any
+        Fixture or test parameter.
+    """
     name = f"test-mssql-{uuid.uuid4().hex[:8]}"
     config = MSSQLConfig(
         user="testuser",
@@ -460,6 +630,16 @@ def test_stop_db(
     mssql_init_config: MSSQLConfig,
     mssql_init_manager: MSSQLDB,
 ):
+    """
+    Test stop db.
+
+    Parameters
+    ----------
+    mssql_init_config : Any
+        Configuration fixture.
+    mssql_init_manager : Any
+        Database manager fixture.
+    """
     mssql_init_manager.create_db()
     # Give SQL Server a moment to finish init
     time.sleep(5)
@@ -481,6 +661,16 @@ def test_delete_db(
     mssql_init_manager: MSSQLDB,
 ):
     # Ensure container starts and database is reachable
+    """
+    Test delete db.
+
+    Parameters
+    ----------
+    mssql_init_config : Any
+        Configuration fixture.
+    mssql_init_manager : Any
+        Database manager fixture.
+    """
     Path(mssql_init_config.volume_path).mkdir(parents=True, exist_ok=True)
     mssql_init_manager.create_db()
 

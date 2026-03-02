@@ -109,6 +109,16 @@ def mongodb_init_config(
     dockerfile: Path,
     init_script: Path,
 ) -> MongoDBConfig:
+    """
+    Mongodb init config.
+
+    Parameters
+    ----------
+    dockerfile : Any
+        Fixture or test parameter.
+    init_script : Any
+        Fixture or test parameter.
+    """
     mongodata = Path(TEMP_DIR, "mongodata")
     mongodata.mkdir(parents=True, exist_ok=True)
     mongo_workdir = Path(CONFIG_DIR, "mongodb")
@@ -140,13 +150,28 @@ def mongodb_init_config(
 
 @pytest.fixture(scope="module")
 def mongodb_manager(mongodb_config: MongoDBConfig):
+    """
+    Mongodb manager.
+
+    Parameters
+    ----------
+    mongodb_config : Any
+        Configuration fixture.
+    """
     manager = MongoDB(mongodb_config)
     yield manager
 
 
 @pytest.fixture(scope="module")
 def mongodb_init_manager(mongodb_init_config):
-    """Fixture that provides a MongoDB instance with test config."""
+    """
+    Fixture that provides a MongoDB instance with test config.
+
+    Parameters
+    ----------
+    mongodb_init_config : Any
+        Configuration fixture.
+    """
     manager = MongoDB(config=mongodb_init_config)
     yield manager
 
@@ -159,7 +184,16 @@ def mongodb_image(
     mongodb_config: MongoDBConfig,
     mongodb_manager: MongoDB,
 ) -> Image:
-    """Check if the given MongoDB image exists."""
+    """
+    Check if the given MongoDB image exists.
+
+    Parameters
+    ----------
+    mongodb_config : Any
+        Configuration fixture.
+    mongodb_manager : Any
+        Database manager fixture.
+    """
     mongodb_manager._build_image()
     client = docker.from_env()
     assert client.images.get(mongodb_config.image_name), "Image should exist after building"
@@ -171,7 +205,16 @@ def mongodb_init_image(
     mongodb_init_config: MongoDBConfig,
     mongodb_init_manager: MongoDB,
 ) -> Image:
-    """Check if the given MongoDB image with init script exists."""
+    """
+    Check if the given MongoDB image with init script exists.
+
+    Parameters
+    ----------
+    mongodb_init_config : Any
+        Configuration fixture.
+    mongodb_init_manager : Any
+        Database manager fixture.
+    """
     mongodb_init_manager._build_image()
     client = docker.from_env()
     assert client.images.get(mongodb_init_config.image_name), "Image should exist after building"
@@ -180,7 +223,14 @@ def mongodb_init_image(
 
 @pytest.fixture
 def remove_test_image(mongodb_config: MongoDBConfig):
-    """Helper to remove the test image."""
+    """
+    Helper to remove the test image.
+
+    Parameters
+    ----------
+    mongodb_config : Any
+        Configuration fixture.
+    """
     try:
         client = docker.from_env()
         client.images.remove(mongodb_config.image_name, force=True)
@@ -202,6 +252,16 @@ def mongodb_container(
     mongodb_manager: MongoDB,
     mongodb_image: Image,
 ):
+    """
+    Mongodb container.
+
+    Parameters
+    ----------
+    mongodb_manager : Any
+        Database manager fixture.
+    mongodb_image : Any
+        Fixture or test parameter.
+    """
     container = mongodb_manager._create_container()
     return container
 
@@ -211,6 +271,16 @@ def mongodb_init_container(
     mongodb_init_manager: MongoDB,
     mongodb_init_image: Image,
 ):
+    """
+    Mongodb init container.
+
+    Parameters
+    ----------
+    mongodb_init_manager : Any
+        Database manager fixture.
+    mongodb_init_image : Any
+        Fixture or test parameter.
+    """
     container = mongodb_init_manager._create_container()
     return container
 
@@ -218,6 +288,14 @@ def mongodb_init_container(
 @pytest.fixture
 def remove_test_container(mongodb_config):
     # ensure no leftover container
+    """
+    Remove test container.
+
+    Parameters
+    ----------
+    mongodb_config : Any
+        Configuration fixture.
+    """
     client = docker.from_env()
     try:
         c = client.containers.get(mongodb_config.container_name)
@@ -227,6 +305,14 @@ def remove_test_container(mongodb_config):
 
 
 def test_docker_running(mongodb_manager: MongoDB):
+    """
+    Test docker running.
+
+    Parameters
+    ----------
+    mongodb_manager : Any
+        Database manager fixture.
+    """
     import docker
     client = docker.from_env()
     client.ping()
@@ -238,7 +324,16 @@ def create_test_image(
     mongodb_config: MongoDBConfig,
     mongodb_manager: MongoDB,
 ):
-    """Check if the given image exists."""
+    """
+    Check if the given image exists.
+
+    Parameters
+    ----------
+    mongodb_config : Any
+        Configuration fixture.
+    mongodb_manager : Any
+        Database manager fixture.
+    """
     mongodb_manager._build_image()
     client = docker.from_env()
     assert client.images.get(mongodb_config.image_name), "Image should exist after building"
@@ -255,7 +350,18 @@ def test_build_image_first_time(
     mongodb_init_manager: MongoDB,
     remove_test_image,
 ):
-    """Test building the image for the first time."""
+    """
+    Test building the image for the first time.
+
+    Parameters
+    ----------
+    mongodb_init_config : Any
+        Configuration fixture.
+    mongodb_init_manager : Any
+        Database manager fixture.
+    remove_test_image : Any
+        Cleanup helper fixture.
+    """
     f = io.StringIO()
 
     with redirect_stdout(f):
@@ -275,7 +381,18 @@ def test_build_image_second_time(
     mongodb_init_manager: MongoDB,
     create_test_image,
 ):
-    """Test that building the image a second time skips the build process."""
+    """
+    Test that building the image a second time skips the build process.
+
+    Parameters
+    ----------
+    mongodb_init_config : Any
+        Configuration fixture.
+    mongodb_init_manager : Any
+        Database manager fixture.
+    create_test_image : Any
+        Fixture or test parameter.
+    """
     f = io.StringIO()
 
     with redirect_stdout(f):
@@ -296,6 +413,16 @@ def test_create_container_inspects_config(
     mongodb_init_manager: MongoDB,
 ):
     # first ensure image exists
+    """
+    Test create container inspects config.
+
+    Parameters
+    ----------
+    mongodb_init_config : Any
+        Configuration fixture.
+    mongodb_init_manager : Any
+        Database manager fixture.
+    """
     mongodb_init_manager._build_image()
 
     # create (but do not start) the container
@@ -320,7 +447,7 @@ def test_create_container_inspects_config(
     targets = {m["Destination"] for m in mounts}
 
     if mongodb_init_config.init_script:
-        assert "/docker-entrypoint-initdb.d" in targets
+        assert any(t.startswith("/docker-entrypoint-initdb.d/") for t in targets)
 
     # 3) check port binding
     bindings = attrs["HostConfig"]["PortBindings"]
@@ -345,6 +472,18 @@ def test_container_start_and_connect(
     mongodb_init_manager: MongoDB,
 ):
     # Ensure container starts and database is reachable
+    """
+    Test container start and connect.
+
+    Parameters
+    ----------
+    mongodb_init_config : Any
+        Configuration fixture.
+    mongodb_init_container : Any
+        Container fixture.
+    mongodb_init_manager : Any
+        Database manager fixture.
+    """
     Path(mongodb_init_config.volume_path).mkdir(parents=True, exist_ok=True)
     container = mongodb_init_manager._start_container(mongodb_init_container)
     mongodb_init_manager.test_connection(), "MongoDB connection test failed"
@@ -396,6 +535,18 @@ def test_stop_and_remove_container(
     mongodb_init_manager: MongoDB,
 ):
     # Ensure container starts and database is reachable
+    """
+    Test stop and remove container.
+
+    Parameters
+    ----------
+    mongodb_init_config : Any
+        Configuration fixture.
+    mongodb_init_container : Any
+        Container fixture.
+    mongodb_init_manager : Any
+        Database manager fixture.
+    """
     Path(mongodb_init_config.volume_path).mkdir(parents=True, exist_ok=True)
     mongodb_init_manager._start_container(mongodb_init_container)
     mongodb_init_manager.test_connection()
@@ -447,6 +598,18 @@ def test_create_db(
     docker_file_path: Path | None,
     init_script_path: Path | None,
 ):
+    """
+    Test create db.
+
+    Parameters
+    ----------
+    image_name : Any
+        Fixture or test parameter.
+    docker_file_path : Any
+        Fixture or test parameter.
+    init_script_path : Any
+        Fixture or test parameter.
+    """
     if image_name == "test-mongo-image" and docker_file_path is None:
         pytest.skip("Local test image tag requires docker_file_path to build it.")
 
@@ -492,6 +655,16 @@ def test_stop_db(
     mongodb_init_config: MongoDBConfig,
     mongodb_init_manager: MongoDB,
 ):
+    """
+    Test stop db.
+
+    Parameters
+    ----------
+    mongodb_init_config : Any
+        Configuration fixture.
+    mongodb_init_manager : Any
+        Database manager fixture.
+    """
     mongodb_init_manager.create_db()
     # Give MongoDB a moment to finish init
     time.sleep(5)
@@ -514,6 +687,18 @@ def test_delete_db(
     mongodb_init_container: Container,
 ):
     # Ensure container starts and database is reachable
+    """
+    Test delete db.
+
+    Parameters
+    ----------
+    mongodb_init_config : Any
+        Configuration fixture.
+    mongodb_init_manager : Any
+        Database manager fixture.
+    mongodb_init_container : Any
+        Container fixture.
+    """
     Path(mongodb_init_config.volume_path).mkdir(parents=True, exist_ok=True)
     mongodb_init_manager._start_container()
     mongodb_init_manager.test_connection()

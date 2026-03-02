@@ -18,6 +18,8 @@ dependencies = [
   "pydantic",
   "pyodbc",
   "mysql-connector-python",
+  "redis",
+  "opensearch-py",
   "pydos2unix",
 ]
 classifiers = [
@@ -37,6 +39,15 @@ test = [
   "nbclient",
   "nbformat",
   "ipykernel",
+  "pydocstyle",
+]
+rag = [
+  "llama-index",
+  "llama-index-vector-stores-postgres",
+  "llama-index-embeddings-langchain",
+  "langchain",
+  "langchain-community",
+  "sentence-transformers",
 ]
 
 [tool.setuptools]
@@ -48,3 +59,7 @@ include = ["docker_db*"]
 
 [tool.setuptools.package-data]
 docker_db = ["tests/data/configs/*/*"]
+
+[tool.pydocstyle]
+convention = "numpy"
+match-dir = "(?!build|dist|\\.venv|\\.pytest_cache).*"

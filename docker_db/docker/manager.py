@@ -11,6 +11,7 @@ try:
 except ImportError:
 
     def dos2unix(src):
+        """Return raw content when pydos2unix is not installed."""
         return src.read()
 
 
@@ -208,7 +209,6 @@ class ContainerManager:
         ConnectionError
             If database does not become ready within the configured timeout
         """
-
         try:
             container = container or self.client.containers.get(self.config.container_name)
         except NotFound:
@@ -238,6 +238,18 @@ class ContainerManager:
         Stop the PostgreSQL container.
 
         This method stops the container and prints its state.
+
+        Parameters
+        ----------
+        container : docker.models.containers.Container, optional
+            Container to stop. If omitted, resolves by configured container name.
+        force : bool, optional
+            If True, force-stop if graceful stop does not complete.
+
+        Returns
+        -------
+        docker.models.containers.Container or None
+            Stopped container object, or None if no container existed.
         """
         # Stop container
         container = self._stop_container(
@@ -255,6 +267,18 @@ class ContainerManager:
         Delete the PostgreSQL container.
 
         This method removes the container completely.
+
+        Parameters
+        ----------
+        container : docker.models.containers.Container, optional
+            Container to delete. If omitted, resolves by configured container name.
+        running_ok : bool, optional
+            If True, allows deletion of a running container by stopping it first.
+
+        Returns
+        -------
+        docker.models.containers.Container or None
+            Removed container object, or None when container did not exist.
         """
         # Remove container
         try:
@@ -368,6 +392,7 @@ class ContainerManager:
     def _convert_script_to_unix(self):
         """
         Convert all init scripts in the specified directory to Unix line endings.
+
         This is necessary for compatibility with Docker containers that expect
         Unix-style line endings.
         """
@@ -590,10 +615,12 @@ class ContainerManager:
             if not self.config.init_script.exists():
                 raise FileNotFoundError(f"Init script {self.config.init_script} does not exist.")
 
+            target_root = self._get_init_script_target().rstrip("/")
+            target_path = f"{target_root}/{self.config.init_script.name}"
             mounts.append(
                 docker.types.Mount(
-                    target=self._get_init_script_target(),
-                    source=str(self.config.init_script.parent.resolve()),
+                    target=target_path,
+                    source=str(self.config.init_script.resolve()),
                     type='bind',
                     read_only=True,
                 ))
