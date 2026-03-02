@@ -1,32 +1,43 @@
 # py-dockerdb
 
-**Provision Docker databases in Python — one call, zero Docker CLI.**
+*Pythonic Docker database management for notebooks, tutorials, and fast MVPs.*
 
-[![PyPI version](https://img.shields.io/pypi/v/py-dockerdb)](https://pypi.org/project/py-dockerdb/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://pypi.org/project/py-dockerdb/)
+[![Build](https://img.shields.io/github/actions/workflow/status/amadou-6e/docker-db/cicd.yml?branch=main&label=tests)](https://github.com/amadou-6e/docker-db/actions/workflows/cicd.yml)
+[![PyPI](https://img.shields.io/pypi/v/py-dockerdb)](https://pypi.org/project/py-dockerdb/)
+[![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
-```bash
-pip install py-dockerdb
-```
+`py-dockerdb` gives you easy Docker database setup in Python for PostgreSQL, MySQL, MongoDB, Microsoft SQL Server, Redis, and Neo4j. It is built for people who teach, demo, and prototype with notebooks or scripts and need repeatable local databases in minutes. Instead of writing Docker commands and per-engine setup code, you use one API to create, start, connect, and clean up containers.
 
-`py-dockerdb` manages Docker containers for databases through a single, unified Python API. Call `create_db()` to get a running container with a live connection object. Call `delete_db()` when you are done. No Dockerfiles to write, no ports to remember, no environment variables to juggle.
+Switch from PostgreSQL to MongoDB and back without changing a line of connection code. This makes side-by-side database comparison a first-class workflow - useful for MVPs where the right engine isn't decided yet, and for RAG experiments where you want to test one storage backend, then swap it out without rewriting environment glue.
 
-**Why this exists:** standing up a local Postgres, Neo4j, MongoDB, or MySQL instance for development and testing typically means writing Dockerfiles, debugging init scripts, and wiring connection strings by hand. `py-dockerdb` reduces that to two lines of Python so you can focus on the application logic.
+If you teach SQL or data workflows, it removes the environment-setup section from your slides entirely: every student runs the same two lines and gets a working database.
 
----
+## When to use this
+
+- **Teaching a SQL workshop or notebook tutorial** - every learner starts from the same environment with no per-machine Docker setup required.
+- **Comparing databases for an MVP** - run PostgreSQL, MySQL, MongoDB, MSSQL, and Redis under the same Python interface and switch engines without rewriting connection code.
+- **Building a local RAG prototype** - spin up a backing store, test your retrieval pipeline, then swap from PostgreSQL to MongoDB in one config change without touching orchestration code.
+- **GraphRAG with Neo4j** - provision a local knowledge graph for multi-hop retrieval pipelines. The `Neo4jDB.connection` property returns a `neo4j.Driver` that plugs directly into LlamaIndex's `Neo4jGraphStore` and LangChain's `Neo4jGraph`.
 
 ## Supported Databases
 
-| Class | Image | Default Port |
-|---|---|---|
-| `PostgresDB` | `postgres:16` | 5432 |
-| `Neo4jDB` | `neo4j:5` | 7687 (Bolt) · 7474 (Browser) |
-| `MongoDB` | `mongo:6` | 27017 |
-| `MySQLDB` | `mysql:8` | 3306 |
-| `MSSQLDB` | `mcr.microsoft.com/mssql/server:2022-latest` | 1433 |
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/docs/)
+[![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)](https://dev.mysql.com/doc/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/docs/)
+[![SQL Server](https://img.shields.io/badge/SQL_Server-CC2927?logo=microsoftsqlserver&logoColor=white)](https://learn.microsoft.com/en-us/sql/sql-server/)
+[![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](https://redis.io/docs/)
+[![Neo4j](https://img.shields.io/badge/Neo4j-008CC1?logo=neo4j&logoColor=white)](https://neo4j.com/docs/)
 
----
+## Prerequisites
+
+- Python 3.10+
+- Docker installed and running
+- Database drivers (installed automatically with package dependencies):
+  - `psycopg2-binary` for PostgreSQL
+  - `mysql-connector-python` for MySQL
+  - `pymongo` for MongoDB
+  - `pyodbc` for MSSQL
+  - `redis` for Redis
 
 ## Installation
 
@@ -38,140 +49,130 @@ pip install py-dockerdb
 pip install "py-dockerdb[graph]"
 ```
 
----
-
-## Common API
-
-Every manager shares the same lifecycle methods:
-
-```python
-db.create_db()          # build image → start container → create database
-db.connection           # native driver connection (psycopg2, pymongo, …)
-db.connection_string()  # URI for framework integrations
-db.stop_db()            # stop the container (data persists on volume)
-db.start_db()           # restart a stopped container
-db.restart_db()         # stop + start
-db.delete_db()          # stop + remove container and image
-db.state()              # container state dict
-```
-
----
-
 ## Usage
 
-### PostgreSQL
+The API is consistent across all five engines: define a config, call `create_db()`, run your workload, then tear down with `delete_db()`.
+
+### PostgreSQL example
 
 ```python
-from docker_db import PostgresDB, PostgresConfig
-
-config = PostgresConfig(user="user", password="pass", database="mydb")
-db = PostgresDB(config)
-db.create_db()
-
-conn = db.connection  # psycopg2 connection with RealDictCursor
-```
-
-### MongoDB
-
-```python
-from docker_db import MongoDB, MongoDBConfig
-
-config = MongoDBConfig(
-    user="user", password="pass", database="mydb",
-    root_username="admin", root_password="adminpass",
-)
-db = MongoDB(config)
-db.create_db()
-
-client = db.connection  # pymongo MongoClient
-```
-
-### MySQL
-
-```python
-from docker_db import MySQLDB, MySQLConfig
-
-config = MySQLConfig(user="user", password="pass", database="mydb", root_password="root")
-db = MySQLDB(config)
-db.create_db()
-```
-
-### MSSQL
-
-```python
-from docker_db import MSSQLDB, MSSQLConfig
-
-config = MSSQLConfig(user="sa", password="StrongPass123!", database="mydb")
-db = MSSQLDB(config)
-db.create_db()
-```
-
-### Neo4j (GraphRAG)
-
-Graph retrieval substantially improves answer quality on multi-hop, relationship-heavy
-questions that dense-vector search alone cannot follow. `Neo4jDB.connection` returns a
-`neo4j.Driver` that plugs directly into LlamaIndex's `Neo4jGraphStore` and LangChain's
-`Neo4jGraph`.
-
-```python
-from docker_db import Neo4jDB, Neo4jConfig
-
-config = Neo4jConfig(password="strongpass")
-db = Neo4jDB(config)
-db.create_db()
-
-driver = db.connection          # neo4j.Driver — Bolt at db.connection_string()
-# Neo4j Browser UI: http://localhost:7474
-```
-
-```python
-# LlamaIndex
-from llama_index.graph_stores.neo4j import Neo4jGraphStore
-graph_store = Neo4jGraphStore(
-    username=config.user, password=config.password,
-    url=db.connection_string(), database=config.database,
-)
-
-# LangChain
-from langchain_community.graphs import Neo4jGraph
-graph = Neo4jGraph(url=db.connection_string(), username=config.user, password=config.password)
-```
-
-See [usage/neo4j_example.ipynb](usage/neo4j_example.ipynb) for the full walkthrough including multi-hop traversal and GraphRAG indexing.
-
-### Initialization Scripts
-
-All managers accept an `init_script` path mounted into the container entrypoint and executed on first startup:
-
-```python
+import uuid
 from pathlib import Path
+from docker_db.dbs.postgres_db import PostgresConfig, PostgresDB
+
+container_name = f"demo-postgres-{uuid.uuid4().hex[:8]}"
+temp_dir = Path("tmp")
+temp_dir.mkdir(exist_ok=True)
 
 config = PostgresConfig(
-    user="user", password="pass", database="mydb",
-    init_script=Path("./sql/schema.sql"),
+    user="demouser",
+    password="demopass",
+    database="demodb",
+    project_name="demo",
+    container_name=container_name,
+    workdir=temp_dir.absolute(),
+    retries=20,
+    delay=3,
 )
+
+db_manager = PostgresDB(config)
+db_manager.create_db()
+
+conn = db_manager.connection
+cur = conn.cursor()
+cur.execute("SELECT version();")
+print(cur.fetchone())
+
+cur.close()
+conn.close()
+db_manager.delete_db(running_ok=True)
 ```
 
-### Custom Volumes and Network Mode
+### Neo4j example (GraphRAG)
+
+```python
+from docker_db.dbs.neo4j_db import Neo4jConfig, Neo4jDB
+
+config = Neo4jConfig(password="demopassword", project_name="demo")
+db_manager = Neo4jDB(config)
+db_manager.create_db()
+
+driver = db_manager.connection          # neo4j.Driver via Bolt
+# Neo4j Browser UI: http://localhost:7474
+
+with driver.session(database=config.database) as session:
+    session.run("CREATE (a:Person {name: 'Alice'})-[:KNOWS]->(b:Person {name: 'Bob'})")
+    result = session.run("MATCH (a)-[:KNOWS]->(b) RETURN b.name AS name")
+    print(result.single()["name"])      # Bob
+
+driver.close()
+db_manager.delete_db(running_ok=True)
+```
+
+### More examples
+
+Full runnable notebooks for each engine are in the [`usage/`](./usage/) directory:
+
+- [PostgreSQL](./usage/postgres_example.ipynb)
+- [MySQL](./usage/mysql_example.ipynb)
+- [MongoDB](./usage/mongo_example.ipynb)
+- [MSSQL](./usage/mssql_example.ipynb)
+- [Redis](./usage/redis_example.ipynb)
+- [Neo4j + GraphRAG](./usage/neo4j_example.ipynb)
+- [Container lifecycle and management](./usage/db_management_example.ipynb)
+
+### Seeding data for demos and workshops
+
+Use `init_script` to preload tables or documents before handing the environment to students or running a live demo.
 
 ```python
 config = PostgresConfig(
-    user="user", password="pass", database="mydb",
-    volume_path=Path("./data/pgdata"),
-    network_mode="host",   # Linux only; falls back to bridge on Windows/macOS
+    ...
+    init_script=Path("./configs/postgres/initdb.sh"),
 )
 ```
 
----
+### SQL magic and client tool integration
 
-## Requirements
+```python
+conn_string = db_manager.connection_string(sql_magic=True)
+```
 
-- Python 3.10+
-- Docker Desktop (or Docker Engine on Linux) running
-- Platform: Linux, macOS, Windows
+## Roadmap
 
----
+- [x] PostgreSQL + `pgvector` (vector store for RAG)
+- [x] Neo4j (GraphRAG, knowledge graph retrieval)
+- [ ] Redis Stack (semantic LLM cache, vector search)
+- [ ] Ollama (local LLM inference)
+- [ ] Elasticsearch / OpenSearch (hybrid BM25 + vector search)
+- [ ] Qdrant
+- [ ] Weaviate
+
+
+## Development
+
+```bash
+git clone https://github.com/amadou-6e/docker-db.git
+cd docker-db
+python -m pip install -e ".[test]"
+```
+
+## Testing
+
+```bash
+python -m pytest -vv -s tests/test_manager.py
+python -m pytest -vv -s tests/test_postgres.py
+python -m pytest -vv -s tests/test_mysql.py
+python -m pytest -vv -s tests/test_mongodb.py
+python -m pytest -vv -s tests/test_mssql.py
+python -m pytest -vv -s tests/test_neo4j.py
+python -m pytest -vv -s tests/test_notebooks.py
+```
+
+## Contributing
+
+Pull requests are welcome. Please include tests for behavior changes and keep examples runnable in the `usage/` notebooks when applicable.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT License. See `LICENSE`.

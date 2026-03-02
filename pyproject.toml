@@ -18,6 +18,7 @@ dependencies = [
   "pydantic",
   "pyodbc",
   "mysql-connector-python",
+  "redis",
   "pydos2unix",
 ]
 classifiers = [
@@ -51,6 +52,13 @@ graph = [
   "neo4j",
   "llama-index-graph-stores-neo4j",
   "langchain-community",
+rag = [
+  "llama-index",
+  "llama-index-vector-stores-postgres",
+  "llama-index-embeddings-langchain",
+  "langchain",
+  "langchain-community",
+  "sentence-transformers",
 ]
 
 [tool.setuptools]

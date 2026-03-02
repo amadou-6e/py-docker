@@ -4,58 +4,66 @@ docker\_db package
 Submodules
 ----------
 
-docker\_db.cassandra\_db module
+docker\_db.dbs.cassandra\_db module
+-----------------------------------
+
+.. automodule:: docker_db.dbs.cassandra_db
+   :members:
+   :show-inheritance:
+   :undoc-members:
+
+docker\_db.dbs.mongo\_db module
 -------------------------------
 
-.. automodule:: docker_db.cassandra_db
+.. automodule:: docker_db.dbs.mongo_db
    :members:
    :show-inheritance:
    :undoc-members:
 
-docker\_db.containers module
-----------------------------
+docker\_db.dbs.mssql\_db module
+-------------------------------
 
-.. automodule:: docker_db.containers
+.. automodule:: docker_db.dbs.mssql_db
    :members:
    :show-inheritance:
    :undoc-members:
 
-docker\_db.mongo\_db module
----------------------------
+docker\_db.dbs.mysql\_db module
+-------------------------------
 
-.. automodule:: docker_db.mongo_db
+.. automodule:: docker_db.dbs.mysql_db
    :members:
    :show-inheritance:
    :undoc-members:
 
-docker\_db.mssql\_db module
----------------------------
+docker\_db.dbs.postgres\_db module
+----------------------------------
 
-.. automodule:: docker_db.mssql_db
+.. automodule:: docker_db.dbs.postgres_db
    :members:
    :show-inheritance:
    :undoc-members:
 
-docker\_db.mysql\_db module
----------------------------
+docker\_db.docker.manager module
+--------------------------------
 
-.. automodule:: docker_db.mysql_db
+.. automodule:: docker_db.docker.manager
    :members:
    :show-inheritance:
    :undoc-members:
 
-docker\_db.postgres\_db module
+docker\_db.docker.model module
 ------------------------------
 
-.. automodule:: docker_db.postgres_db
+.. automodule:: docker_db.docker.model
    :members:
    :show-inheritance:
    :undoc-members:
 
-docker\_db.utils module
------------------------
+docker\_db.docker.utils module
+------------------------------
 
-.. automodule:: docker_db.utils
+.. automodule:: docker_db.docker.utils
    :members:
    :show-inheritance:
    :undoc-members:

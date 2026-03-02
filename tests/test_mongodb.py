@@ -320,7 +320,7 @@ def test_create_container_inspects_config(
     targets = {m["Destination"] for m in mounts}
 
     if mongodb_init_config.init_script:
-        assert "/docker-entrypoint-initdb.d" in targets
+        assert any(t.startswith("/docker-entrypoint-initdb.d/") for t in targets)
 
     # 3) check port binding
     bindings = attrs["HostConfig"]["PortBindings"]

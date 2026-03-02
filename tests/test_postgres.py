@@ -301,7 +301,7 @@ def test_create_container_inspects_config(
     mounts = attrs["Mounts"]
     sources = {m["Source"] for m in mounts}
     assert str(postgres_init_config.volume_path.resolve()) in sources
-    assert str(postgres_init_config.init_script.resolve().parent) in sources
+    assert str(postgres_init_config.init_script.resolve()) in sources
 
     # 3) check port binding
     bindings = attrs["HostConfig"]["PortBindings"]
