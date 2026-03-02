@@ -65,7 +65,21 @@ class OllamaDB(ContainerManager):
         return f"http://{self.config.host}:{self.config.port}"
 
     def connection_string(self, db_name: str = None, sql_magic: bool = False) -> str:
-        """Get Ollama base URL."""
+        """
+        Get Ollama base URL.
+
+        Parameters
+        ----------
+        db_name : str, optional
+            Unused placeholder for API compatibility with other managers.
+        sql_magic : bool, optional
+            Unused placeholder for API compatibility with SQL-oriented managers.
+
+        Returns
+        -------
+        str
+            Base URL of the Ollama API endpoint.
+        """
         return self.base_url
 
     def _get_environment_vars(self):
@@ -143,7 +157,19 @@ class OllamaDB(ContainerManager):
         return self._wait_for_api_ready()
 
     def pull_model(self, model: str):
-        """Pull a model via Ollama API."""
+        """
+        Pull a model via Ollama API.
+
+        Parameters
+        ----------
+        model : str
+            Model name to download into the local Ollama store.
+
+        Returns
+        -------
+        dict
+            JSON response returned by Ollama pull endpoint.
+        """
         response = requests.post(
             f"{self.base_url}/api/pull",
             json={"model": model, "stream": False},
