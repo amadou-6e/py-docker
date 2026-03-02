@@ -55,11 +55,27 @@ def opensearch_port():
 
 @pytest.fixture
 def clear_opensearch_port(opensearch_port):
+    """
+    Clear opensearch port.
+
+    Parameters
+    ----------
+    opensearch_port : Any
+        Fixture or test parameter.
+    """
     clear_port(opensearch_port, "test-opensearch")
 
 
 @pytest.fixture
 def opensearch_config(opensearch_port) -> OpenSearchConfig:
+    """
+    Opensearch config.
+
+    Parameters
+    ----------
+    opensearch_port : Any
+        Fixture or test parameter.
+    """
     name = f"test-opensearch-{uuid.uuid4().hex[:8]}"
     opensearch_data = Path(TEST_DIR, "data", "opensearchdata", name)
     opensearch_data.mkdir(parents=True, exist_ok=True)
@@ -77,12 +93,28 @@ def opensearch_config(opensearch_port) -> OpenSearchConfig:
 
 @pytest.fixture
 def opensearch_manager(opensearch_config: OpenSearchConfig):
+    """
+    Opensearch manager.
+
+    Parameters
+    ----------
+    opensearch_config : Any
+        Configuration fixture.
+    """
     manager = OpenSearchDB(opensearch_config)
     yield manager
 
 
 @pytest.mark.usefixtures("clear_opensearch_port")
 def test_create_db_and_connection(opensearch_manager: OpenSearchDB):
+    """
+    Test create db and connection.
+
+    Parameters
+    ----------
+    opensearch_manager : Any
+        Database manager fixture.
+    """
     opensearch_manager.create_db()
     assert opensearch_manager.database_created
 
@@ -95,6 +127,14 @@ def test_create_db_and_connection(opensearch_manager: OpenSearchDB):
 
 @pytest.mark.usefixtures("clear_opensearch_port")
 def test_index_and_search_document(opensearch_manager: OpenSearchDB):
+    """
+    Test index and search document.
+
+    Parameters
+    ----------
+    opensearch_manager : Any
+        Database manager fixture.
+    """
     opensearch_manager.create_db()
 
     client: OpenSearch = opensearch_manager.connection
@@ -120,6 +160,14 @@ def test_index_and_search_document(opensearch_manager: OpenSearchDB):
 
 @pytest.mark.usefixtures("clear_opensearch_port")
 def test_stop_and_restart(opensearch_manager: OpenSearchDB):
+    """
+    Test stop and restart.
+
+    Parameters
+    ----------
+    opensearch_manager : Any
+        Database manager fixture.
+    """
     opensearch_manager.create_db()
     opensearch_manager.stop_db()
     assert opensearch_manager.state() in ("exited", "created")

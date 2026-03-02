@@ -62,5 +62,9 @@ jobs:
       - name: Show Docker info
         run: docker info
 
+      - name: Check NumPy docstrings
+        if: matrix.test_file == 'tests/test_manager.py'
+        run: python -m pydocstyle docker_db
+
       - name: Run tests
         run: python -m pytest -vv -s --timeout=600 --timeout-method=thread ${{ matrix.test_file }}

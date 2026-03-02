@@ -39,6 +39,7 @@ test = [
   "nbclient",
   "nbformat",
   "ipykernel",
+  "pydocstyle",
 ]
 rag = [
   "llama-index",
@@ -58,3 +59,7 @@ include = ["docker_db*"]
 
 [tool.setuptools.package-data]
 docker_db = ["tests/data/configs/*/*"]
+
+[tool.pydocstyle]
+convention = "numpy"
+match-dir = "(?!build|dist|\\.venv|\\.pytest_cache).*"

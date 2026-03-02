@@ -69,6 +69,14 @@ def pgvector_manager() -> PostgresDB:
 
 
 def test_pgvector_extension_is_available(pgvector_manager: PostgresDB):
+    """
+    Test pgvector extension is available.
+
+    Parameters
+    ----------
+    pgvector_manager : Any
+        Database manager fixture.
+    """
     conn = pgvector_manager.connection
     try:
         with conn.cursor() as cur:
@@ -80,6 +88,14 @@ def test_pgvector_extension_is_available(pgvector_manager: PostgresDB):
 
 
 def test_pgvector_can_run_vector_similarity_query(pgvector_manager: PostgresDB):
+    """
+    Test pgvector can run vector similarity query.
+
+    Parameters
+    ----------
+    pgvector_manager : Any
+        Database manager fixture.
+    """
     conn = pgvector_manager.connection
     try:
         with conn.cursor() as cur:
@@ -116,6 +132,14 @@ def test_pgvector_can_run_vector_similarity_query(pgvector_manager: PostgresDB):
 
 
 def test_llamaindex_pgvector_store_from_params(pgvector_manager: PostgresDB):
+    """
+    Test llamaindex pgvector store from params.
+
+    Parameters
+    ----------
+    pgvector_manager : Any
+        Database manager fixture.
+    """
     llama_postgres = pytest.importorskip("llama_index.vector_stores.postgres")
     PGVectorStore = llama_postgres.PGVectorStore
 

@@ -43,6 +43,7 @@ class MySQLConfig(ContainerConfig):
     It provides the necessary settings to create and connect to a MySQL
     database running in a Docker container.
     """
+
     user: str = Field(description="MySQL username for database access")
     password: str = Field(description="MySQL password for database access")
     database: str = Field(description="Name of the default database to create")

@@ -54,6 +54,7 @@ class PostgresConfig(ContainerConfig):
     It provides the necessary settings to create and connect to a PostgreSQL database
     running in a Docker container.
     """
+
     user: str = Field(description="PostgreSQL username for authentication")
     password: str = Field(description="PostgreSQL password for authentication")
     database: str = Field(description="Name of the default database to create")
@@ -277,7 +278,6 @@ class PostgresDB(ContainerManager):
         OperationalError
             If an unexpected database connection error occurs.
         """
-
         # Phase 1: wait for Docker container to be 'Running'
         try:
             container = container or self.client.containers.get(self.config.container_name)
