@@ -14,6 +14,7 @@ SHORTHAND_MAP = {
     "cassandra": "cs",
     "redis": "rd",
     "opensearch": "os",
+    "qdrant": "qd",
 }
 
 DEFAULT_IMAGE_MAP = {
@@ -25,6 +26,7 @@ DEFAULT_IMAGE_MAP = {
     "cassandra": "cassandra:4",
     "redis": "redis:7",
     "opensearch": "opensearchproject/opensearch:2.13.0",
+    "qdrant": "qdrant/qdrant:v1.9.5",
 }
 
 class ContainerConfig(BaseModel):
