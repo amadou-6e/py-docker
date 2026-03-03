@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "py-dockerdb"
-version = "0.8.0"
-description = "Python package for working with databases in Docker containers"
+version = "0.9.0"
+description = "Provision Docker databases in Python — Postgres, Neo4j, MongoDB, MySQL, MSSQL with a unified one-call API"
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 authors = [
   { name = "Amadou Wolfgang Cisse", email = "amadou.6e@googlemail.com" }
 ]
@@ -23,10 +23,19 @@ dependencies = [
   "pydos2unix",
 ]
 classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Operating System :: OS Independent",
   "Topic :: Database",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Software Development :: Libraries :: Python Modules",
+  "Topic :: System :: Systems Administration",
 ]
 
 [project.urls]
@@ -40,6 +49,11 @@ test = [
   "nbformat",
   "ipykernel",
   "pydocstyle",
+]
+graph = [
+  "neo4j",
+  "llama-index-graph-stores-neo4j",
+  "langchain-community",
 ]
 rag = [
   "llama-index",

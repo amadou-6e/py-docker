@@ -13,6 +13,8 @@ from docker_db.dbs import (
     MySQLDB,
     OllamaConfig,
     OllamaDB,
+    Neo4jConfig,
+    Neo4jDB,
     PostgresConfig,
     PostgresDB,
 )
@@ -31,6 +33,8 @@ __all__ = [
     "OllamaConfig",
     "MSSQLDB",
     "MSSQLConfig",
+    "Neo4jDB",
+    "Neo4jConfig",
     "OpenSearchDB",
     "OpenSearchConfig",
     "RedisDB",

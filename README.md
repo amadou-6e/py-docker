@@ -17,7 +17,7 @@ If you teach SQL or data workflows, it removes the environment-setup section fro
 - **Teaching a SQL workshop or notebook tutorial** - every learner starts from the same environment with no per-machine Docker setup required.
 - **Comparing databases for an MVP** - run PostgreSQL, MySQL, MongoDB, MSSQL, Redis, and Neo4j under the same Python interface and switch engines without rewriting connection code.
 - **Building a local RAG prototype** - spin up a backing store, test your retrieval pipeline, then swap from PostgreSQL to MongoDB in one config change without touching orchestration code.
-- **GraphRAG experiments** - provision a Neo4j container, build knowledge graphs from your documents, and run multi-hop traversal queries with LlamaIndex or LangChain.
+- **GraphRAG with Neo4j** - provision a local knowledge graph for multi-hop retrieval pipelines. The `Neo4jDB.connection` property returns a `neo4j.Driver` that plugs directly into LlamaIndex's `Neo4jGraphStore` and LangChain's `Neo4jGraph`.
 
 ## Supported Databases
 
@@ -30,7 +30,7 @@ If you teach SQL or data workflows, it removes the environment-setup section fro
 
 ## Prerequisites
 
-- Python 3.7+
+- Python 3.10+
 - Docker installed and running
 - Database drivers (installed automatically with package dependencies):
   - `psycopg2-binary` for PostgreSQL
@@ -43,7 +43,11 @@ If you teach SQL or data workflows, it removes the environment-setup section fro
 ## Installation
 
 ```bash
+# Core
 pip install py-dockerdb
+
+# With graph dependencies (Neo4j driver, LlamaIndex / LangChain graph stores)
+pip install "py-dockerdb[graph]"
 ```
 
 ## Usage
@@ -152,11 +156,7 @@ Docker-friendly vector and graph backends that can be run locally without paid l
 - [x] PostgreSQL + `pgvector`
 - [x] Neo4j (knowledge graphs, GraphRAG)
 - [ ] Qdrant
-- [ ] Chroma
 - [ ] Weaviate
-- [ ] Milvus
-- [ ] OpenSearch (vector search)
-- [ ] Redis Stack (vector search)
 
 
 ## Development

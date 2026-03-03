@@ -25,6 +25,7 @@ jobs:
           - tests/test_mongodb.py
           - tests/test_mssql.py
           - tests/test_ollama.py
+          - tests/test_neo4j.py
           - tests/test_redis.py
           - tests/test_opensearch.py
 
