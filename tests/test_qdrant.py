@@ -109,13 +109,18 @@ def test_upsert_and_search_point(qdrant_manager: QdrantDB):
     client.upsert(collection_name=collection_name, points=[point], wait=True)
     response = requests.post(
         f"{qdrant_manager.connection_string()}/collections/{collection_name}/points/search",
-        json={"vector": vector, "limit": 1},
+        json={
+            "vector": vector,
+            "limit": 1,
+            "with_payload": True,
+        },
         timeout=5,
     )
     response.raise_for_status()
     results = response.json().get("result", [])
     assert len(results) >= 1
-    assert results[0].get("payload", {}).get("text") == "hello qdrant"
+    payload = results[0].get("payload") or {}
+    assert payload.get("text") == "hello qdrant"
 
     qdrant_manager.delete_db(running_ok=True)
 
