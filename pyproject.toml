@@ -19,6 +19,7 @@ dependencies = [
   "pyodbc",
   "mysql-connector-python",
   "redis",
+  "opensearch-py",
   "pydos2unix",
 ]
 classifiers = [
@@ -72,3 +73,7 @@ include = ["docker_db*"]
 
 [tool.setuptools.package-data]
 docker_db = ["tests/data/configs/*/*"]
+
+[tool.pydocstyle]
+convention = "numpy"
+match-dir = "(?!build|dist|\\.venv|\\.pytest_cache).*"

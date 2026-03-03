@@ -31,6 +31,14 @@ def _cleanup_demo_and_test_containers():
 
 
 def _should_skip_cell(source: str) -> bool:
+    """
+    Should skip cell.
+
+    Parameters
+    ----------
+    source : Any
+        Fixture or test parameter.
+    """
     normalized = source.strip().lower()
     if "this will fail because the container exists" in normalized:
         return True
@@ -47,6 +55,14 @@ def _should_skip_cell(source: str) -> bool:
 
 @pytest.mark.parametrize("notebook_path", NOTEBOOKS, ids=lambda p: p.name)
 def test_notebook_executes_without_errors(notebook_path: Path):
+    """
+    Test notebook executes without errors.
+
+    Parameters
+    ----------
+    notebook_path : Any
+        Fixture or test parameter.
+    """
     _cleanup_demo_and_test_containers()
 
     with notebook_path.open("r", encoding="utf-8") as f:

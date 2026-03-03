@@ -11,7 +11,7 @@ try:
 except ImportError:
 
     def dos2unix(src):
-        """Return input bytes unchanged when pydos2unix is unavailable."""
+        """Return raw content when pydos2unix is not installed."""
         return src.read()
 
 
@@ -238,6 +238,18 @@ class ContainerManager:
         Stop the PostgreSQL container.
 
         This method stops the container and prints its state.
+
+        Parameters
+        ----------
+        container : docker.models.containers.Container, optional
+            Container to stop. If omitted, resolves by configured container name.
+        force : bool, optional
+            If True, force-stop if graceful stop does not complete.
+
+        Returns
+        -------
+        docker.models.containers.Container or None
+            Stopped container object, or None if no container existed.
         """
         # Stop container
         container = self._stop_container(
@@ -255,6 +267,18 @@ class ContainerManager:
         Delete the PostgreSQL container.
 
         This method removes the container completely.
+
+        Parameters
+        ----------
+        container : docker.models.containers.Container, optional
+            Container to delete. If omitted, resolves by configured container name.
+        running_ok : bool, optional
+            If True, allows deletion of a running container by stopping it first.
+
+        Returns
+        -------
+        docker.models.containers.Container or None
+            Removed container object, or None when container did not exist.
         """
         # Remove container
         try:

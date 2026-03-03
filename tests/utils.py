@@ -1,3 +1,5 @@
+"""Test helper utilities for filesystem and Docker port cleanup."""
+
 import os
 import shutil
 import platform
@@ -7,6 +9,14 @@ from pathlib import Path
 
 
 def nuke_dir(path: Path):
+    """
+    Remove a directory tree with Windows/Linux fallback strategies.
+
+    Parameters
+    ----------
+    path : Path
+        Directory path to remove recursively.
+    """
     if not path.exists():
         return
 
@@ -47,6 +57,18 @@ def nuke_dir(path: Path):
 
 
 def clear_port(port: int, container_prefix: str, timeout: int = 60):
+    """
+    Stop matching containers until the given TCP port is free.
+
+    Parameters
+    ----------
+    port : int
+        TCP port that must be freed.
+    container_prefix : str
+        Container name prefix eligible to be stopped.
+    timeout : int, optional
+        Maximum wait time in seconds before raising ``TimeoutError``.
+    """
     client = docker.from_env()
     start = time.time()
 

@@ -64,12 +64,30 @@ def redis_config() -> RedisConfig:
 
 @pytest.fixture
 def redis_manager(redis_config: RedisConfig):
+    """
+    Redis manager.
+
+    Parameters
+    ----------
+    redis_config : Any
+        Configuration fixture.
+    """
     manager = RedisDB(redis_config)
     yield manager
 
 
 @pytest.mark.usefixtures("clear_port_6379")
 def test_create_db_and_connection(redis_config: RedisConfig, redis_manager: RedisDB):
+    """
+    Test create db and connection.
+
+    Parameters
+    ----------
+    redis_config : Any
+        Configuration fixture.
+    redis_manager : Any
+        Database manager fixture.
+    """
     container = redis_manager.create_db()
     assert isinstance(container, Container)
 
@@ -81,6 +99,16 @@ def test_create_db_and_connection(redis_config: RedisConfig, redis_manager: Redi
 
 @pytest.mark.usefixtures("clear_port_6379")
 def test_stop_db(redis_config: RedisConfig, redis_manager: RedisDB):
+    """
+    Test stop db.
+
+    Parameters
+    ----------
+    redis_config : Any
+        Configuration fixture.
+    redis_manager : Any
+        Database manager fixture.
+    """
     redis_manager.create_db()
     time.sleep(1)
     redis_manager.stop_db()
@@ -93,6 +121,16 @@ def test_stop_db(redis_config: RedisConfig, redis_manager: RedisDB):
 
 @pytest.mark.usefixtures("clear_port_6379")
 def test_delete_db(redis_config: RedisConfig, redis_manager: RedisDB):
+    """
+    Test delete db.
+
+    Parameters
+    ----------
+    redis_config : Any
+        Configuration fixture.
+    redis_manager : Any
+        Database manager fixture.
+    """
     redis_manager.create_db()
     with pytest.raises(RuntimeError, match="still running"):
         redis_manager.delete_db()

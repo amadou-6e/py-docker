@@ -13,7 +13,7 @@ from docker_db.docker import ContainerConfig, ContainerManager
 
 
 class CassandraConfig(ContainerConfig):
-    """Configuration for Cassandra container."""
+    """Configuration for a Cassandra container."""
 
     user: str
     password: str
@@ -51,7 +51,7 @@ class Cassandra(ContainerManager):
         return PlainTextAuthProvider(username=username, password=password)
 
     def _create_container(self, force=False):
-        """Create a new Cassandra container with volume, env and port mappings."""
+        """Create a Cassandra container with volume, env, and port mappings."""
         if self._is_container_created():
             if force:
                 print(f"Container {self.config.container_name} already exists. Removing it.")

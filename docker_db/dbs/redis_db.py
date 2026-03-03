@@ -54,7 +54,19 @@ class RedisDB(ContainerManager):
         )
 
     def connection_string(self, db_name: int | None = None) -> str:
-        """Get Redis connection string."""
+        """
+        Get Redis connection string.
+
+        Parameters
+        ----------
+        db_name : int, optional
+            Redis logical database index. If omitted, uses configured default.
+
+        Returns
+        -------
+        str
+            Redis URI for host, port, and logical database.
+        """
         database = self.config.database if db_name is None else db_name
         return f"redis://{self.config.host}:{self.config.port}/{database}"
 

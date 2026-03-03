@@ -112,6 +112,16 @@ def postgres_init_config(
     dockerfile: Path,
     init_script: Path,
 ) -> PostgresConfig:
+    """
+    Postgres init config.
+
+    Parameters
+    ----------
+    dockerfile : Any
+        Fixture or test parameter.
+    init_script : Any
+        Fixture or test parameter.
+    """
     name = f"test-postgres-{uuid.uuid4().hex[:8]}"
     pgdata = Path(TEST_DIR, "data", "pgdata", name)
     pgdata.mkdir(parents=True, exist_ok=True)
@@ -140,13 +150,28 @@ def postgres_init_config(
 
 @pytest.fixture
 def postgres_manager(postgres_config: PostgresConfig):
+    """
+    Postgres manager.
+
+    Parameters
+    ----------
+    postgres_config : Any
+        Configuration fixture.
+    """
     manager = PostgresDB(postgres_config)
     yield manager
 
 
 @pytest.fixture
 def postgres_init_manager(postgres_init_config):
-    """Fixture that provides a PostgresDockerManager instance with test config."""
+    """
+    Fixture that provides a PostgresDockerManager instance with test config.
+
+    Parameters
+    ----------
+    postgres_init_config : Any
+        Configuration fixture.
+    """
     manager = PostgresDB(config=postgres_init_config)
     yield manager
 
@@ -161,7 +186,16 @@ def postgres_image(
     postgres_config: PostgresConfig,
     postgres_manager: PostgresDB,
 ) -> Image:
-    """Check if the given image exists."""
+    """
+    Check if the given image exists.
+
+    Parameters
+    ----------
+    postgres_config : Any
+        Configuration fixture.
+    postgres_manager : Any
+        Database manager fixture.
+    """
     postgres_manager._build_image()
     client = docker.from_env()
     assert client.images.get(postgres_config.image_name), "Image should exist after building"
@@ -173,7 +207,16 @@ def postgres_init_image(
     postgres_init_config: PostgresConfig,
     postgres_init_manager: PostgresDB,
 ) -> Image:
-    """Check if the given image exists."""
+    """
+    Check if the given image exists.
+
+    Parameters
+    ----------
+    postgres_init_config : Any
+        Configuration fixture.
+    postgres_init_manager : Any
+        Database manager fixture.
+    """
     postgres_init_manager._build_image()
     client = docker.from_env()
     assert client.images.get(postgres_init_config.image_name), "Image should exist after building"
@@ -182,7 +225,14 @@ def postgres_init_image(
 
 @pytest.fixture
 def remove_test_image(postgres_config: PostgresConfig):
-    """Helper to remove the test image."""
+    """
+    Helper to remove the test image.
+
+    Parameters
+    ----------
+    postgres_config : Any
+        Configuration fixture.
+    """
     try:
         client = docker.from_env()
         client.images.remove(postgres_config.image_name, force=True)
@@ -204,6 +254,16 @@ def postgres_container(
     postgres_manager: PostgresDB,
     postgres_image: Image,
 ):
+    """
+    Postgres container.
+
+    Parameters
+    ----------
+    postgres_manager : Any
+        Database manager fixture.
+    postgres_image : Any
+        Fixture or test parameter.
+    """
     container = postgres_manager._create_container()
     return container
 
@@ -213,6 +273,16 @@ def postgres_init_container(
     postgres_init_manager: PostgresDB,
     postgres_init_image: Image,
 ):
+    """
+    Postgres init container.
+
+    Parameters
+    ----------
+    postgres_init_manager : Any
+        Database manager fixture.
+    postgres_init_image : Any
+        Fixture or test parameter.
+    """
     container = postgres_init_manager._create_container()
     return container
 
@@ -220,6 +290,14 @@ def postgres_init_container(
 @pytest.fixture
 def remove_test_container(postgres_config):
     # ensure no leftover container
+    """
+    Remove test container.
+
+    Parameters
+    ----------
+    postgres_config : Any
+        Configuration fixture.
+    """
     client = docker.from_env()
     try:
         c = client.containers.get(postgres_config.container_name)
@@ -229,6 +307,14 @@ def remove_test_container(postgres_config):
 
 
 def test_docker_running(postgres_manager: PostgresDB):
+    """
+    Test docker running.
+
+    Parameters
+    ----------
+    postgres_manager : Any
+        Database manager fixture.
+    """
     import docker
     client = docker.from_env()
     client.ping()
@@ -241,7 +327,18 @@ def test_build_image_first_time(
     postgres_init_manager: PostgresDB,
     remove_test_image,
 ):
-    """Test building the image for the first time."""
+    """
+    Test building the image for the first time.
+
+    Parameters
+    ----------
+    postgres_init_config : Any
+        Configuration fixture.
+    postgres_init_manager : Any
+        Database manager fixture.
+    remove_test_image : Any
+        Cleanup helper fixture.
+    """
     f = io.StringIO()
 
     with redirect_stdout(f):
@@ -260,7 +357,18 @@ def test_build_image_second_time(
     postgres_init_manager: PostgresDB,
     postgres_init_image,
 ):
-    """Test that building the image a second time skips the build process."""
+    """
+    Test that building the image a second time skips the build process.
+
+    Parameters
+    ----------
+    postgres_init_config : Any
+        Configuration fixture.
+    postgres_init_manager : Any
+        Database manager fixture.
+    postgres_init_image : Any
+        Fixture or test parameter.
+    """
     f = io.StringIO()
 
     with redirect_stdout(f):
@@ -281,6 +389,16 @@ def test_create_container_inspects_config(
     postgres_init_manager: PostgresDB,
 ):
     # first ensure image exists
+    """
+    Test create container inspects config.
+
+    Parameters
+    ----------
+    postgres_init_config : Any
+        Configuration fixture.
+    postgres_init_manager : Any
+        Database manager fixture.
+    """
     postgres_init_manager._build_image()
 
     # create (but do not start) the container
@@ -324,6 +442,18 @@ def test_container_start_and_connect(
     postgres_init_manager: PostgresDB,
 ):
     # Ensure container starts and database is reachable
+    """
+    Test container start and connect.
+
+    Parameters
+    ----------
+    postgres_init_config : Any
+        Configuration fixture.
+    postgres_init_container : Any
+        Container fixture.
+    postgres_init_manager : Any
+        Database manager fixture.
+    """
     Path(postgres_init_config.volume_path).mkdir(parents=True, exist_ok=True)
     postgres_init_manager._start_container(postgres_init_container)
     postgres_init_manager.test_connection()
@@ -353,6 +483,18 @@ def test_stop_and_remove_container(
     postgres_init_manager: PostgresDB,
 ):
     # Ensure container starts and database is reachable
+    """
+    Test stop and remove container.
+
+    Parameters
+    ----------
+    postgres_init_config : Any
+        Configuration fixture.
+    postgres_init_container : Any
+        Container fixture.
+    postgres_init_manager : Any
+        Database manager fixture.
+    """
     Path(postgres_init_config.volume_path).mkdir(parents=True, exist_ok=True)
     postgres_init_manager._start_container(postgres_init_container)
     postgres_init_manager.test_connection()
@@ -408,6 +550,20 @@ def test_create_db(
     image_name: str | None,
     postgres_init_config: PostgresConfig,
 ):
+    """
+    Test create db.
+
+    Parameters
+    ----------
+    docker_file_path : Any
+        Fixture or test parameter.
+    init_script_path : Any
+        Fixture or test parameter.
+    image_name : Any
+        Fixture or test parameter.
+    postgres_init_config : Any
+        Configuration fixture.
+    """
     if image_name == "test-postgres-image" and docker_file_path is None:
         pytest.skip("Local test image tag requires docker_file_path to build it.")
 
@@ -449,6 +605,16 @@ def test_stop_db(
     postgres_init_config: PostgresConfig,
     postgres_init_manager: PostgresDB,
 ):
+    """
+    Test stop db.
+
+    Parameters
+    ----------
+    postgres_init_config : Any
+        Configuration fixture.
+    postgres_init_manager : Any
+        Database manager fixture.
+    """
     postgres_init_manager.create_db()
     # Give Postgres a moment to finish init
     time.sleep(2)
@@ -479,7 +645,18 @@ def test_start_db_running_ok(
     postgres_init_manager: PostgresDB,
     running_ok: bool,
 ):
-    """Test starting DB with different running_ok values when container is already running."""
+    """
+    Test starting DB with different running_ok values when container is already running.
+
+    Parameters
+    ----------
+    postgres_init_config : Any
+        Configuration fixture.
+    postgres_init_manager : Any
+        Database manager fixture.
+    running_ok : Any
+        Fixture or test parameter.
+    """
     # First create and start the container
     postgres_init_manager.create_db()
     time.sleep(2)  # Give Postgres time to initialize
@@ -517,7 +694,18 @@ def test_start_db_force(
     postgres_init_manager: PostgresDB,
     force: bool,
 ):
-    """Test starting DB with different force values."""
+    """
+    Test starting DB with different force values.
+
+    Parameters
+    ----------
+    postgres_init_config : Any
+        Configuration fixture.
+    postgres_init_manager : Any
+        Database manager fixture.
+    force : Any
+        Fixture or test parameter.
+    """
     # First create and start the container
     postgres_init_manager.create_db()
     time.sleep(2)  # Give Postgres time to initialize
@@ -591,6 +779,18 @@ def test_delete_db(
     postgres_init_container: Container,
 ):
     # Ensure container starts and database is reachable
+    """
+    Test delete db.
+
+    Parameters
+    ----------
+    postgres_init_config : Any
+        Configuration fixture.
+    postgres_init_manager : Any
+        Database manager fixture.
+    postgres_init_container : Any
+        Container fixture.
+    """
     Path(postgres_init_config.volume_path).mkdir(parents=True, exist_ok=True)
     postgres_init_manager._start_container()
     postgres_init_manager.test_connection()
