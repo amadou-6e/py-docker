@@ -6,7 +6,7 @@ By the end of this page, you will have a running PostgreSQL container managed fr
 Prerequisites
 -------------
 
-- Python 3.7+
+- Python 3.10+
 - Docker installed and running
 - Database drivers (installed automatically with package dependencies):
   - ``psycopg2-binary`` for PostgreSQL
@@ -19,7 +19,9 @@ Installation
 
 .. code-block:: bash
 
-   pip install py-dockerdb
+   pip install py-dockerdb                # core
+   pip install "py-dockerdb[graph]"       # + Neo4j / LlamaIndex / LangChain
+   pip install "py-dockerdb[rag]"         # + pgvector / LlamaIndex
 
 Your First py-dockerdb Workflow
 -------------------------------
@@ -83,4 +85,8 @@ Next Steps
   Redis key-value store and caching examples.
 - `neo4j_example.ipynb <https://github.com/amadou-6e/docker-db/blob/main/usage/neo4j_example.ipynb>`_:
   Neo4j knowledge graph setup, node/relationship queries, and GraphRAG with LlamaIndex.
+- `pgvector_rag_example.ipynb <https://github.com/amadou-6e/docker-db/blob/main/usage/pgvector_rag_example.ipynb>`_:
+  pgvector RAG pipeline with LlamaIndex vector store.
+- `ollama_example.ipynb <https://github.com/amadou-6e/docker-db/blob/main/usage/ollama_example.ipynb>`_:
+  Ollama local LLM container setup and model inference.
 - API reference: :doc:`source/modules`
