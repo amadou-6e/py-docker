@@ -24,6 +24,7 @@ jobs:
           - tests/test_mysql.py
           - tests/test_mongodb.py
           - tests/test_mssql.py
+          - tests/test_neo4j.py
           - tests/test_redis.py
           - tests/test_opensearch.py
           - tests/test_qdrant.py
@@ -54,7 +55,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[test,rag]"
+          python -m pip install -e ".[test,graph,rag]"
 
       - name: Register Jupyter kernel
         run: |

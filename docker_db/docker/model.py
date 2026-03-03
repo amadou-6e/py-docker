@@ -12,6 +12,7 @@ SHORTHAND_MAP = {
     "mssql": "ms",
     "mongodb": "mg",
     "cassandra": "cs",
+    "neo4j": "n4j",
     "redis": "rd",
     "opensearch": "os",
     "qdrant": "qd",
@@ -24,10 +25,12 @@ DEFAULT_IMAGE_MAP = {
     "mssql": "mcr.microsoft.com/mssql/server:2022-latest",
     "mongodb": "mongo:6",
     "cassandra": "cassandra:4",
+    "neo4j": "neo4j:5",
     "redis": "redis:7",
     "opensearch": "opensearchproject/opensearch:2.13.0",
     "qdrant": "qdrant/qdrant:v1.9.5",
 }
+
 
 class ContainerConfig(BaseModel):
     """Configuration for a Docker container running a database."""
@@ -70,10 +73,8 @@ class ContainerConfig(BaseModel):
     )
     network_mode: str | None = Field(
         default=None,
-        description=(
-            "Docker network mode: 'host', 'bridge', 'none', or custom network name. "
-            "'host' only works on Linux and falls back to bridge elsewhere."
-        ),
+        description=("Docker network mode: 'host', 'bridge', 'none', or custom network name. "
+                     "'host' only works on Linux and falls back to bridge elsewhere."),
     )
     extra_hosts: dict[str, str] | None = Field(
         default=None,
@@ -98,5 +99,3 @@ class ContainerConfig(BaseModel):
         self.volume_path = self.volume_path or Path(self.workdir,
                                                     f"{SHORTHAND_MAP[self._type]}data")
         self.volume_path.mkdir(parents=True, exist_ok=True)
-
-

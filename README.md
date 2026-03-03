@@ -6,7 +6,11 @@
 [![PyPI](https://img.shields.io/pypi/v/py-dockerdb)](https://pypi.org/project/py-dockerdb/)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
+<<<<<<< HEAD
 `py-dockerdb` gives you easy Docker database setup in Python for PostgreSQL, MySQL, MongoDB, Microsoft SQL Server, Redis, OpenSearch, and Qdrant. It is built for people who teach, demo, and prototype with notebooks or scripts and need repeatable local databases in minutes. Instead of writing Docker commands and per-engine setup code, you use one API to create, start, connect, and clean up containers.
+=======
+`py-dockerdb` gives you easy Docker database setup in Python for PostgreSQL, MySQL, MongoDB, Microsoft SQL Server, Redis, and Neo4j. It is built for people who teach, demo, and prototype with notebooks or scripts and need repeatable local databases in minutes. Instead of writing Docker commands and per-engine setup code, you use one API to create, start, connect, and clean up containers.
+>>>>>>> main
 
 Switch from PostgreSQL to MongoDB and back without changing a line of connection code. This makes side-by-side database comparison a first-class workflow - useful for MVPs where the right engine isn't decided yet, and for RAG experiments where you want to test one storage backend, then swap it out without rewriting environment glue.
 
@@ -17,6 +21,7 @@ If you teach SQL or data workflows, it removes the environment-setup section fro
 - **Teaching a SQL workshop or notebook tutorial** - every learner starts from the same environment with no per-machine Docker setup required.
 - **Comparing databases for an MVP** - run PostgreSQL, MySQL, MongoDB, MSSQL, Redis, OpenSearch, and Qdrant under the same Python interface and switch engines without rewriting connection code.
 - **Building a local RAG prototype** - spin up a backing store, test your retrieval pipeline, then swap from PostgreSQL to MongoDB in one config change without touching orchestration code.
+- **GraphRAG with Neo4j** - provision a local knowledge graph for multi-hop retrieval pipelines. The `Neo4jDB.connection` property returns a `neo4j.Driver` that plugs directly into LlamaIndex's `Neo4jGraphStore` and LangChain's `Neo4jGraph`.
 
 ## Supported Databases
 
@@ -25,26 +30,40 @@ If you teach SQL or data workflows, it removes the environment-setup section fro
 [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/docs/)
 [![SQL Server](https://img.shields.io/badge/SQL_Server-CC2927?logo=microsoftsqlserver&logoColor=white)](https://learn.microsoft.com/en-us/sql/sql-server/)
 [![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](https://redis.io/docs/)
+<<<<<<< HEAD
 [![OpenSearch](https://img.shields.io/badge/OpenSearch-005EB8?logo=opensearch&logoColor=white)](https://opensearch.org/docs/latest/)
 [![Qdrant](https://img.shields.io/badge/Qdrant-EA4AAA?logo=qdrant&logoColor=white)](https://qdrant.tech/documentation/)
+=======
+[![Neo4j](https://img.shields.io/badge/Neo4j-008CC1?logo=neo4j&logoColor=white)](https://neo4j.com/docs/)
+>>>>>>> main
 
 ## Prerequisites
 
-- Python 3.7+
+- Python 3.10+
 - Docker installed and running
 - Database drivers (installed automatically with package dependencies):
   - `psycopg2-binary` for PostgreSQL
   - `mysql-connector-python` for MySQL
+<<<<<<< HEAD
 - `pymongo` for MongoDB
 - `pyodbc` for MSSQL
 - `redis` for Redis
 - `opensearch-py` for OpenSearch
 - `qdrant-client` for Qdrant
+=======
+  - `pymongo` for MongoDB
+  - `pyodbc` for MSSQL
+  - `redis` for Redis
+>>>>>>> main
 
 ## Installation
 
 ```bash
+# Core
 pip install py-dockerdb
+
+# With graph dependencies (Neo4j driver, LlamaIndex / LangChain graph stores)
+pip install "py-dockerdb[graph]"
 ```
 
 ## Usage
@@ -86,6 +105,27 @@ conn.close()
 db_manager.delete_db(running_ok=True)
 ```
 
+### Neo4j example (GraphRAG)
+
+```python
+from docker_db.dbs.neo4j_db import Neo4jConfig, Neo4jDB
+
+config = Neo4jConfig(password="demopassword", project_name="demo")
+db_manager = Neo4jDB(config)
+db_manager.create_db()
+
+driver = db_manager.connection          # neo4j.Driver via Bolt
+# Neo4j Browser UI: http://localhost:7474
+
+with driver.session(database=config.database) as session:
+    session.run("CREATE (a:Person {name: 'Alice'})-[:KNOWS]->(b:Person {name: 'Bob'})")
+    result = session.run("MATCH (a)-[:KNOWS]->(b) RETURN b.name AS name")
+    print(result.single()["name"])      # Bob
+
+driver.close()
+db_manager.delete_db(running_ok=True)
+```
+
 ### More examples
 
 Full runnable notebooks for each engine are in the [`usage/`](./usage/) directory:
@@ -95,6 +135,7 @@ Full runnable notebooks for each engine are in the [`usage/`](./usage/) director
 - [MongoDB](./usage/mongo_example.ipynb)
 - [MSSQL](./usage/mssql_example.ipynb)
 - [Redis](./usage/redis_example.ipynb)
+- [Neo4j + GraphRAG](./usage/neo4j_example.ipynb)
 - [Container lifecycle and management](./usage/db_management_example.ipynb)
 
 ### Seeding data for demos and workshops
@@ -116,15 +157,21 @@ conn_string = db_manager.connection_string(sql_magic=True)
 
 ## Roadmap
 
+<<<<<<< HEAD
 Docker-friendly vector backends that can be run locally without paid licenses:
 
 - [x] PostgreSQL + `pgvector`
 - [x] Qdrant
 - [ ] Chroma
+=======
+- [x] PostgreSQL + `pgvector` (vector store for RAG)
+- [x] Neo4j (GraphRAG, knowledge graph retrieval)
+- [ ] Redis Stack (semantic LLM cache, vector search)
+- [ ] Ollama (local LLM inference)
+- [ ] Elasticsearch / OpenSearch (hybrid BM25 + vector search)
+- [ ] Qdrant
+>>>>>>> main
 - [ ] Weaviate
-- [ ] Milvus
-- [ ] OpenSearch (vector search)
-- [ ] Redis Stack (vector search)
 
 
 ## Development
@@ -146,6 +193,7 @@ python -m pytest -vv -s tests/test_mssql.py
 python -m pytest -vv -s tests/test_redis.py
 python -m pytest -vv -s tests/test_opensearch.py
 python -m pytest -vv -s tests/test_qdrant.py
+python -m pytest -vv -s tests/test_neo4j.py
 python -m pytest -vv -s tests/test_notebooks.py
 ```
 
