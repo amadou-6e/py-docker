@@ -14,7 +14,7 @@ py-dockerdb
 
 ``py-dockerdb`` gives you easy Docker database setup in Python for PostgreSQL, MySQL, MongoDB, Microsoft SQL Server, Redis, and Neo4j. It is built for people who teach, demo, and prototype with notebooks or scripts and need repeatable local databases in minutes. Instead of writing Docker commands and per-engine setup code, you use one API to create, start, connect, and clean up containers.
 
-Switch from PostgreSQL to MongoDB and back without changing a line of connection code. This makes side-by-side database comparison a first-class workflow, useful for MVPs where the right engine is not decided yet, and for RAG experiments where you want to test one storage backend, then swap it out without rewriting environment glue.
+Switch from PostgreSQL to MongoDB and back without changing a line of connection code. This makes side-by-side database comparison a first-class workflow, useful for MVPs where the right engine is not decided yet, and for RAG and GraphRAG experiments where you want to test one storage backend, then swap it out without rewriting environment glue.
 
 If you teach SQL or data workflows, it removes the environment setup section from your slides entirely: every student runs the same two lines and gets a working database.
 
@@ -25,7 +25,7 @@ Python instructors and demo authors who need a classroom-ready, reproducible set
 
 Learners and MVP builders who want to compare databases quickly with the same Pythonic workflow. You can test PostgreSQL, MySQL, MongoDB, MSSQL, Redis, and Neo4j under one lifecycle pattern and decide based on behavior instead of setup overhead.
 
-RAG and AI prototype builders who need fast local backend swaps during iteration. This workflow supports testing one database option, then changing engines without rebuilding your orchestration from scratch. For GraphRAG pipelines, ``Neo4jDB`` provisions a local Neo4j knowledge graph in one call and hands off a ``neo4j.Driver`` ready for LlamaIndex or LangChain.
+RAG and AI prototype builders who need fast local backend swaps during iteration. This workflow supports testing one database option, then changing engines without rebuilding your orchestration from scratch. Neo4j support enables GraphRAG workflows — provision a knowledge graph container and run multi-hop queries with LlamaIndex or LangChain in the same lifecycle pattern.
 
 What You Can Do With py-dockerdb
 --------------------------------
@@ -51,4 +51,5 @@ Where To Go Next
   `mysql_example.ipynb <https://github.com/amadou-6e/docker-db/blob/main/usage/mysql_example.ipynb>`_
   `mongo_example.ipynb <https://github.com/amadou-6e/docker-db/blob/main/usage/mongo_example.ipynb>`_
   `mssql_example.ipynb <https://github.com/amadou-6e/docker-db/blob/main/usage/mssql_example.ipynb>`_
+  `redis_example.ipynb <https://github.com/amadou-6e/docker-db/blob/main/usage/redis_example.ipynb>`_
   `neo4j_example.ipynb <https://github.com/amadou-6e/docker-db/blob/main/usage/neo4j_example.ipynb>`_
