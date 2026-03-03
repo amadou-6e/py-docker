@@ -32,6 +32,14 @@ class RedisDB(ContainerManager):
     """Manages lifecycle of a Redis container via Docker SDK."""
 
     def __init__(self, config: RedisConfig):
+        """
+        Initialize Redis manager.
+
+        Parameters
+        ----------
+        config : RedisConfig
+            Redis container and connection configuration.
+        """
         self.config: RedisConfig = config
         assert self._is_docker_running()
         self.client = docker.from_env()

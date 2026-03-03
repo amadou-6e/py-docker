@@ -14,6 +14,7 @@ SHORTHAND_MAP = {
     "cassandra": "cs",
     "redis": "rd",
     "opensearch": "os",
+    "chroma": "ch",
 }
 
 DEFAULT_IMAGE_MAP = {
@@ -25,6 +26,7 @@ DEFAULT_IMAGE_MAP = {
     "cassandra": "cassandra:4",
     "redis": "redis:7",
     "opensearch": "opensearchproject/opensearch:2.13.0",
+    "chroma": "chromadb/chroma:0.5.5",
 }
 
 class ContainerConfig(BaseModel):

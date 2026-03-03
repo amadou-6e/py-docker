@@ -85,6 +85,14 @@ class MongoDB(ContainerManager):
     """
 
     def __init__(self, config):
+        """
+        Initialize MongoDB manager.
+
+        Parameters
+        ----------
+        config : MongoDBConfig
+            MongoDB container and connection configuration.
+        """
         self.config: MongoDBConfig = config
         assert self._is_docker_running()
         self.client = docker.from_env()

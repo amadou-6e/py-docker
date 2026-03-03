@@ -11,7 +11,19 @@ try:
 except ImportError:
 
     def dos2unix(src):
-        """Return raw content when pydos2unix is not installed."""
+        """
+        Return raw content when pydos2unix is not installed.
+
+        Parameters
+        ----------
+        src : BinaryIO
+            File-like binary stream containing script contents.
+
+        Returns
+        -------
+        bytes
+            Raw bytes read from ``src`` without line-ending conversion.
+        """
         return src.read()
 
 
@@ -41,6 +53,14 @@ class ContainerManager:
     _user_ready_on_start = True
 
     def __init__(self, config):
+        """
+        Initialize the container manager.
+
+        Parameters
+        ----------
+        config : ContainerConfig
+            Container configuration used for image/container lifecycle operations.
+        """
         self.config: ContainerConfig = config
         assert self._is_docker_running()
         self.client = docker.from_env()

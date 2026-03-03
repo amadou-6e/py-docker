@@ -27,6 +27,14 @@ class Cassandra(ContainerManager):
     """Manage lifecycle of a Cassandra container via Docker SDK."""
 
     def __init__(self, config):
+        """
+        Initialize Cassandra manager.
+
+        Parameters
+        ----------
+        config : CassandraConfig
+            Cassandra container and connection configuration.
+        """
         self.config: CassandraConfig = config
         assert self._is_docker_running()
         self.client = docker.from_env()

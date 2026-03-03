@@ -33,6 +33,14 @@ class OpenSearchDB(ContainerManager):
     """Manages lifecycle of an OpenSearch container via Docker SDK."""
 
     def __init__(self, config: OpenSearchConfig):
+        """
+        Initialize OpenSearch manager.
+
+        Parameters
+        ----------
+        config : OpenSearchConfig
+            OpenSearch container and connection configuration.
+        """
         self.config: OpenSearchConfig = config
         assert self._is_docker_running()
         self.client = docker.from_env()
