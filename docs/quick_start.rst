@@ -79,4 +79,6 @@ Next Steps
   MongoDB CRUD and collection examples.
 - `mssql_example.ipynb <https://github.com/amadou-6e/docker-db/blob/main/usage/mssql_example.ipynb>`_:
   MSSQL setup and query workflow.
+- `neo4j_example.ipynb <https://github.com/amadou-6e/docker-db/blob/main/usage/neo4j_example.ipynb>`_:
+  Neo4j setup, Cypher operations, multi-hop traversal, and GraphRAG integration with LlamaIndex and LangChain.
 - API reference: :doc:`source/modules`

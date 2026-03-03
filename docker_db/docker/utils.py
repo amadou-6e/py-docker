@@ -1,5 +1,5 @@
 """
-Docker Port Management Utilities.
+Docker port management utilities.
 
 This module provides utilities for managing Docker containers and network ports,
 including checking Docker daemon availability, port availability, and clearing
