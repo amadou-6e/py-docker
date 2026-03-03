@@ -106,11 +106,12 @@ def test_upsert_and_search_point(qdrant_manager: QdrantDB):
     point = PointStruct(id=1, vector=vector, payload={"text": "hello qdrant"})
 
     client.upsert(collection_name=collection_name, points=[point], wait=True)
-    results = client.search(
+    response = client.query_points(
         collection_name=collection_name,
-        query_vector=vector,
+        query=vector,
         limit=1,
     )
+    results = response.points
     assert len(results) >= 1
     assert results[0].payload.get("text") == "hello qdrant"
 

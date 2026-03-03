@@ -42,7 +42,11 @@ class QdrantDB(ContainerManager):
         QdrantClient
             A client connected to the configured Qdrant endpoint.
         """
-        return QdrantClient(url=self.connection_string(), timeout=5.0)
+        return QdrantClient(
+            url=self.connection_string(),
+            timeout=5.0,
+            check_compatibility=False,
+        )
 
     def connection_string(self, db_name: str = None, sql_magic: bool = False) -> str:
         """
