@@ -7,6 +7,8 @@ from docker_db.dbs import (
     MSSQLDB,
     OpenSearchConfig,
     OpenSearchDB,
+    QdrantConfig,
+    QdrantDB,
     RedisConfig,
     RedisDB,
     MySQLConfig,
@@ -37,6 +39,8 @@ __all__ = [
     "Neo4jConfig",
     "OpenSearchDB",
     "OpenSearchConfig",
+    "QdrantDB",
+    "QdrantConfig",
     "RedisDB",
     "RedisConfig",
 ]

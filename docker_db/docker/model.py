@@ -15,6 +15,7 @@ SHORTHAND_MAP = {
     "ollama": "ol",
     "redis": "rd",
     "opensearch": "os",
+    "qdrant": "qd",
     "neo4j": "n4j",
 }
 
@@ -28,6 +29,7 @@ DEFAULT_IMAGE_MAP = {
     "ollama": "ollama/ollama:latest",
     "redis": "redis:7",
     "opensearch": "opensearchproject/opensearch:2.13.0",
+    "qdrant": "qdrant/qdrant:v1.9.5",
     "neo4j": "neo4j:5",
 }
 
