@@ -5,6 +5,7 @@ from pathlib import Path
 
 import docker
 import pytest
+import requests
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
 
@@ -106,14 +107,15 @@ def test_upsert_and_search_point(qdrant_manager: QdrantDB):
     point = PointStruct(id=1, vector=vector, payload={"text": "hello qdrant"})
 
     client.upsert(collection_name=collection_name, points=[point], wait=True)
-    response = client.query_points(
-        collection_name=collection_name,
-        query=vector,
-        limit=1,
+    response = requests.post(
+        f"{qdrant_manager.connection_string()}/collections/{collection_name}/points/search",
+        json={"vector": vector, "limit": 1},
+        timeout=5,
     )
-    results = response.points
+    response.raise_for_status()
+    results = response.json().get("result", [])
     assert len(results) >= 1
-    assert results[0].payload.get("text") == "hello qdrant"
+    assert results[0].get("payload", {}).get("text") == "hello qdrant"
 
     qdrant_manager.delete_db(running_ok=True)
 
