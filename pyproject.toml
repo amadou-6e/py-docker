@@ -20,6 +20,7 @@ dependencies = [
   "mysql-connector-python",
   "redis",
   "opensearch-py",
+  "weaviate-client",
   "pydos2unix",
 ]
 classifiers = [

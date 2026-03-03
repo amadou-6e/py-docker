@@ -6,6 +6,7 @@ from docker_db.dbs.mysql_db import MySQLDB, MySQLConfig
 from docker_db.dbs.mssql_db import MSSQLDB, MSSQLConfig
 from docker_db.dbs.redis_db import RedisDB, RedisConfig
 from docker_db.dbs.opensearch_db import OpenSearchDB, OpenSearchConfig
+from docker_db.dbs.weaviate_db import WeaviateDB, WeaviateConfig
 
 __all__ = [
     "MongoDB",
@@ -20,4 +21,6 @@ __all__ = [
     "RedisConfig",
     "OpenSearchDB",
     "OpenSearchConfig",
+    "WeaviateDB",
+    "WeaviateConfig",
 ]

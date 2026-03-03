@@ -26,6 +26,7 @@ jobs:
           - tests/test_mssql.py
           - tests/test_redis.py
           - tests/test_opensearch.py
+          - tests/test_weaviate.py
 
     steps:
       - name: Checkout

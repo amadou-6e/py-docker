@@ -6,7 +6,7 @@
 [![PyPI](https://img.shields.io/pypi/v/py-dockerdb)](https://pypi.org/project/py-dockerdb/)
 [![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
 
-`py-dockerdb` gives you easy Docker database setup in Python for PostgreSQL, MySQL, MongoDB, Microsoft SQL Server, and Redis. It is built for people who teach, demo, and prototype with notebooks or scripts and need repeatable local databases in minutes. Instead of writing Docker commands and per-engine setup code, you use one API to create, start, connect, and clean up containers.
+`py-dockerdb` gives you easy Docker database setup in Python for PostgreSQL, MySQL, MongoDB, Microsoft SQL Server, Redis, OpenSearch, and Weaviate. It is built for people who teach, demo, and prototype with notebooks or scripts and need repeatable local databases in minutes. Instead of writing Docker commands and per-engine setup code, you use one API to create, start, connect, and clean up containers.
 
 Switch from PostgreSQL to MongoDB and back without changing a line of connection code. This makes side-by-side database comparison a first-class workflow - useful for MVPs where the right engine isn't decided yet, and for RAG experiments where you want to test one storage backend, then swap it out without rewriting environment glue.
 
@@ -15,7 +15,7 @@ If you teach SQL or data workflows, it removes the environment-setup section fro
 ## When to use this
 
 - **Teaching a SQL workshop or notebook tutorial** - every learner starts from the same environment with no per-machine Docker setup required.
-- **Comparing databases for an MVP** - run PostgreSQL, MySQL, MongoDB, MSSQL, and Redis under the same Python interface and switch engines without rewriting connection code.
+- **Comparing databases for an MVP** - run PostgreSQL, MySQL, MongoDB, MSSQL, Redis, OpenSearch, and Weaviate under the same Python interface and switch engines without rewriting connection code.
 - **Building a local RAG prototype** - spin up a backing store, test your retrieval pipeline, then swap from PostgreSQL to MongoDB in one config change without touching orchestration code.
 
 ## Supported Databases
@@ -25,6 +25,8 @@ If you teach SQL or data workflows, it removes the environment-setup section fro
 [![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/docs/)
 [![SQL Server](https://img.shields.io/badge/SQL_Server-CC2927?logo=microsoftsqlserver&logoColor=white)](https://learn.microsoft.com/en-us/sql/sql-server/)
 [![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](https://redis.io/docs/)
+[![OpenSearch](https://img.shields.io/badge/OpenSearch-005EB8?logo=opensearch&logoColor=white)](https://opensearch.org/docs/latest/)
+[![Weaviate](https://img.shields.io/badge/Weaviate-00D2AA?logo=weaviate&logoColor=white)](https://docs.weaviate.io/)
 
 ## Prerequisites
 
@@ -36,6 +38,8 @@ If you teach SQL or data workflows, it removes the environment-setup section fro
 - `pymongo` for MongoDB
 - `pyodbc` for MSSQL
 - `redis` for Redis
+- `opensearch-py` for OpenSearch
+- `weaviate-client` for Weaviate
 
 ## Installation
 
@@ -139,6 +143,9 @@ python -m pytest -vv -s tests/test_postgres.py
 python -m pytest -vv -s tests/test_mysql.py
 python -m pytest -vv -s tests/test_mongodb.py
 python -m pytest -vv -s tests/test_mssql.py
+python -m pytest -vv -s tests/test_redis.py
+python -m pytest -vv -s tests/test_opensearch.py
+python -m pytest -vv -s tests/test_weaviate.py
 python -m pytest -vv -s tests/test_notebooks.py
 ```
 

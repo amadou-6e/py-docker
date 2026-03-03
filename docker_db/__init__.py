@@ -7,6 +7,8 @@ from docker_db.dbs import (
     MSSQLDB,
     OpenSearchConfig,
     OpenSearchDB,
+    WeaviateConfig,
+    WeaviateDB,
     RedisConfig,
     RedisDB,
     MySQLConfig,
@@ -29,6 +31,8 @@ __all__ = [
     "MSSQLConfig",
     "OpenSearchDB",
     "OpenSearchConfig",
+    "WeaviateDB",
+    "WeaviateConfig",
     "RedisDB",
     "RedisConfig",
 ]
