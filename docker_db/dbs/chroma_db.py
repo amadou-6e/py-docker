@@ -149,6 +149,7 @@ class ChromaDB(ContainerManager):
                     "/api/v1/heartbeat",
                     "/api/v2/heartbeat",
                     "/api/v1/version",
+                    "/api/v1",
                 ):
                     response = requests.get(f"{base_url}{endpoint}", timeout=2)
                     if response.status_code == 200:
@@ -160,11 +161,29 @@ class ChromaDB(ContainerManager):
         return False
 
     def test_connection(self):
-        """Ensure Chroma API is reachable."""
+        """
+        Ensure Chroma API is reachable.
+
+        Returns
+        -------
+        bool
+            True when at least one Chroma readiness endpoint is reachable.
+        """
         if not self._wait_for_db():
             raise ConnectionError("Chroma API is not reachable.")
-        try:
-            self.connection.heartbeat()
-            return True
-        except Exception as exc:
-            raise ConnectionError(f"Chroma API ping failed: {exc}") from exc
+        base_url = self.connection_string()
+        last_error = None
+        for endpoint in (
+            "/api/v2/heartbeat",
+            "/api/v1/heartbeat",
+            "/api/v1/version",
+            "/api/v1",
+        ):
+            try:
+                response = requests.get(f"{base_url}{endpoint}", timeout=3)
+                if response.status_code == 200:
+                    return True
+                last_error = RuntimeError(response.text)
+            except Exception as exc:
+                last_error = exc
+        raise ConnectionError(f"Chroma API ping failed: {last_error}")
