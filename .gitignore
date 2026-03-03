@@ -8,6 +8,7 @@ config.yaml
 chromedriver.log
 .skill*
 experiments/
+usage/tmp/
 
 
 
