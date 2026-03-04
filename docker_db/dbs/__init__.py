@@ -8,6 +8,7 @@ from docker_db.dbs.ollama_db import OllamaDB, OllamaConfig
 from docker_db.dbs.neo4j_db import Neo4jDB, Neo4jConfig
 from docker_db.dbs.redis_db import RedisDB, RedisConfig
 from docker_db.dbs.opensearch_db import OpenSearchDB, OpenSearchConfig
+from docker_db.dbs.qdrant_db import QdrantDB, QdrantConfig
 
 __all__ = [
     "MongoDB",
@@ -26,4 +27,6 @@ __all__ = [
     "RedisConfig",
     "OpenSearchDB",
     "OpenSearchConfig",
+    "QdrantDB",
+    "QdrantConfig",
 ]

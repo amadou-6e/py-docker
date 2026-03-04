@@ -110,12 +110,39 @@ Full runnable notebooks are in [`usage/`](./usage/):
 · [Redis](./usage/redis_example.ipynb) · [Neo4j / GraphRAG](./usage/neo4j_example.ipynb)
 · [pgvector RAG](./usage/pgvector_rag_example.ipynb) · [Lifecycle](./usage/db_management_example.ipynb)
 
+## Roadmap
+
+- [x] PostgreSQL + `pgvector`
+- [x] Neo4j
+- [x] Qdrant
+- [ ] Chroma
+- [ ] Weaviate
+- [ ] Milvus
+
 ## Development
 
 ```bash
 git clone https://github.com/amadou-6e/docker-db.git
 cd docker-db
 pip install -e ".[test]"
+```
+
+## Testing
+
+```bash
+python -m pytest -vv -s tests/test_manager.py
+python -m pytest -vv -s tests/test_postgres.py
+python -m pytest -vv -s tests/test_postgres_pgvector.py
+python -m pytest -vv -s tests/test_mysql.py
+python -m pytest -vv -s tests/test_mongodb.py
+python -m pytest -vv -s tests/test_mssql.py
+python -m pytest -vv -s tests/test_redis.py
+python -m pytest -vv -s tests/test_cassandra.py
+python -m pytest -vv -s tests/test_neo4j.py
+python -m pytest -vv -s tests/test_opensearch.py
+python -m pytest -vv -s tests/test_qdrant.py
+python -m pytest -vv -s tests/test_ollama.py
+python -m pytest -vv -s tests/test_notebooks.py
 ```
 
 ## Contributing
