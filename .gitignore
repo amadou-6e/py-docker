@@ -1,11 +1,15 @@
 env/
 venv/
 .venv
+.claude
 ztrash
 debug.log
 config.yaml
 chromedriver.log
 .skill*
+experiments/
+tmp/
+
 
 
 # Created by https://www.gitignore.io/api/python

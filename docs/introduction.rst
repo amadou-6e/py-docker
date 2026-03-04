@@ -12,7 +12,7 @@ py-dockerdb
 .. |License| image:: https://img.shields.io/badge/license-MIT-lightgrey
    :target: ../LICENSE
 
-``py-dockerdb`` gives you easy Docker database setup in Python for PostgreSQL, MySQL, MongoDB, Microsoft SQL Server, Redis, and Neo4j. It is built for people who teach, demo, and prototype with notebooks or scripts and need repeatable local databases in minutes. Instead of writing Docker commands and per-engine setup code, you use one API to create, start, connect, and clean up containers.
+``py-dockerdb`` gives you easy Docker database setup in Python for PostgreSQL, MySQL, MongoDB, Microsoft SQL Server, Redis, Neo4j, and Ollama. It is built for people who teach, demo, and prototype with notebooks or scripts and need repeatable local databases in seconds. Instead of writing Docker commands and per-engine setup code, you use one API to create, start, connect, and clean up containers.
 
 Switch from PostgreSQL to MongoDB and back without changing a line of connection code. This makes side-by-side database comparison a first-class workflow, useful for MVPs where the right engine is not decided yet, and for RAG and GraphRAG experiments where you want to test one storage backend, then swap it out without rewriting environment glue.
 
