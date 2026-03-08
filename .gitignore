@@ -1,6 +1,10 @@
+my-medium/
+my-skills/
+llama-index-pydocker/
 env/
 venv/
 .venv
+.vscode/
 .claude
 ztrash
 debug.log
@@ -9,6 +13,8 @@ chromedriver.log
 .skill*
 experiments/
 tmp/
+codex.yaml
+
 
 
 
@@ -59,6 +65,8 @@ MANIFEST
 #  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+.spec
+.specs/
 
 # Installer logs
 pip-log.txt
@@ -136,3 +144,5 @@ message.txt
 /logs
 /pgdata
 entrypoint.log
+
+llama-index-coockbook/

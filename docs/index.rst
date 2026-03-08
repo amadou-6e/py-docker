@@ -12,10 +12,31 @@ documentation for details.
 
 
 .. toctree::
-   :maxdepth: 4
-   :caption: Contents: 
-   
+   :maxdepth: 2
+   :caption: Getting Started
+
    introduction
    quick_start
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Database Backends
+
+   databases/index
+   databases/neo4j
+   databases/postgres
+   databases/mysql
+   databases/mssql
+   databases/mongodb
+   databases/redis
+   databases/qdrant
+   databases/opensearch
+   databases/ollama
+   databases/cassandra
+
+.. toctree::
+   :maxdepth: 4
+   :caption: API Reference
+
    source/modules.rst
 

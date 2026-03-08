@@ -26,6 +26,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.napoleon',
     'sphinx_autodoc_typehints',
+    'myst_parser',
 ]
 
 templates_path = ['_templates']
@@ -41,6 +42,7 @@ html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
 
 autosummary_generate = True
+autodoc_mock_imports = ['cassandra']
 napoleon_numpy_docstring = True
 numpydoc_class_members_toctree = False
 numpydoc_show_class_members = False
