@@ -15,11 +15,16 @@ from py_docker.containers.service import Containers
 from py_docker.errors import ConnectionConfigurationError, DockerOperationError, OwnershipConflictError
 
 
-def test_context_precedes_host():
+def test_explicit_context_precedes_environment_host():
     with patch.object(ConnectionResolver, "_context_endpoint", return_value="unix:///context.sock") as lookup:
-        result = ConnectionResolver().resolve(ConnectionSettings(), {"DOCKER_HOST": "tcp://wrong:2375", "DOCKER_CONTEXT": "chosen"})
+        result = ConnectionResolver().resolve(ConnectionSettings(context="chosen"), {"DOCKER_HOST": "tcp://wrong:2375"})
     assert result.endpoint == "unix:///context.sock"
     assert lookup.call_args.args[0] == "chosen"
+
+
+def test_ambiguous_host_and_context_environment_is_rejected():
+    with pytest.raises(ConnectionConfigurationError):
+        ConnectionResolver().resolve(ConnectionSettings(), {"DOCKER_HOST": "tcp://wrong:2375", "DOCKER_CONTEXT": "chosen"})
 
 
 def test_explicit_endpoint_precedes_environment():
@@ -42,6 +47,9 @@ def test_credentials_are_excluded_from_model_serialization():
     spec = ContainerSpec(image="image", name="job", environment={"TOKEN": "sentinel-secret"}, labels={"owner": "secret-label"})
     assert "sentinel-secret" not in spec.model_dump_json()
     assert "secret-label" not in repr(spec)
+    with pytest.raises(ValidationError) as raised:
+        ContainerSpec(environment={"TOKEN": "sentinel-secret"})
+    assert "sentinel-secret" not in str(raised.value)
 
 
 def test_unrecognized_launch_options_are_rejected():

@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 class ContainerSpec(BaseModel):
     """Explicit Docker options; images are resolved locally before creation."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
     image: str = Field(min_length=1)
     name: str = Field(min_length=1)
     command: list[str] | None = None
@@ -30,7 +30,7 @@ class ContainerSpec(BaseModel):
 class ContainerIdentity(BaseModel):
     """Immutable ID and expected labels. Names alone never authorize deletion."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
     id: str = Field(pattern=r"^[0-9a-f]{64}$")
     name: str = Field(min_length=1)
     labels: dict[str, SecretStr] = Field(min_length=1, repr=False, exclude=True)
@@ -39,6 +39,6 @@ class ContainerIdentity(BaseModel):
 class ContainerReservation(BaseModel):
     """Ownership intent retained before sending create, including unknown outcomes."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid")
+    model_config = ConfigDict(frozen=True, extra="forbid", hide_input_in_errors=True)
     name: str = Field(min_length=1)
     labels: dict[str, SecretStr] = Field(min_length=1, repr=False, exclude=True)

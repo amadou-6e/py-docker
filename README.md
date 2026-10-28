@@ -31,8 +31,11 @@ Docker created the resource. Volume create errors likewise retain a receipt.
 Container creation disables Docker config proxy injection and reads back the
 requested sandbox, process configuration, bind mounts and environment.
 
-Connection selection: explicit endpoint, explicit context/DOCKER_CONTEXT,
+Connection selection: explicit endpoint, explicit context, DOCKER_CONTEXT or
 DOCKER_HOST, active CLI context, platform default if Docker CLI is absent.
+Simultaneous DOCKER_CONTEXT and DOCKER_HOST environment settings are rejected
+unless the caller selects an explicit endpoint/context. This avoids relying on
+different CLI/SDK versions' precedence behavior during a mixed migration.
 The selected endpoint is exposed as `client.connection`. Remote plain TCP needs
 the explicit `Client(allow_remote=True)` argument; an environment variable cannot
 grant that permission. `Client(environment=snapshot)` isolates library settings

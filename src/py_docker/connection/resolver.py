@@ -13,7 +13,7 @@ from py_docker.errors import ConnectionConfigurationError
 
 
 class ConnectionResolver:
-    """Use explicit settings, DOCKER_CONTEXT, DOCKER_HOST, then active context."""
+    """Resolve explicit settings; reject ambiguous host/context environment."""
 
     def resolve(self, settings: ConnectionSettings, environment: Mapping[str, str] | None = None, *, allow_remote: bool = False) -> ResolvedConnection:
         env = dict(os.environ if environment is None else environment)
@@ -21,6 +21,8 @@ class ConnectionResolver:
         if any(env.get(key) for key in ("DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "DOCKER_TLS")):
             raise ConnectionConfigurationError("resolve TLS configuration")
         context = settings.context or env.get("DOCKER_CONTEXT")
+        if not settings.endpoint and not settings.context and env.get("DOCKER_CONTEXT") and env.get("DOCKER_HOST"):
+            raise ConnectionConfigurationError("choose either DOCKER_CONTEXT or DOCKER_HOST")
         if settings.endpoint:
             endpoint, source = settings.endpoint, "explicit"
         elif context:
