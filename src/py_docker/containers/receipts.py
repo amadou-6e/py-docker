@@ -127,8 +127,9 @@ class ReceiptStore:
 
         Raises
         ------
-        CleanupUnconfirmedError
-            Persisting the observation failed; the old intent is preserved.
+        DockerOperationError
+            Persisting the observation failed; the caller must clean the known
+            identity before deciding whether cleanup is uncertain.
         """
         self._require_lock()
         temporary = None
@@ -159,9 +160,7 @@ class ReceiptStore:
                 os.fsync(target.fileno())
             os.replace(temporary, self._path)
         except Exception:
-            raise CleanupUnconfirmedError(
-                "record observed container identity", reservation
-            ) from None
+            raise DockerOperationError("record observed container identity") from None
         finally:
             if temporary is not None:
                 try:

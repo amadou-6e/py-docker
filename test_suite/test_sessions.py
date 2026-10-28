@@ -138,10 +138,11 @@ def test_observation_replace_failure_keeps_original_intent(tmp_path):
             "py_docker.containers.receipts.os.replace",
             side_effect=OSError("private raw control"),
         ):
-            with pytest.raises(CleanupUnconfirmedError) as caught:
+            with pytest.raises(DockerOperationError) as caught:
                 store.observe(reservation, identity)
         assert path.read_bytes() == before
         assert "private raw control" not in str(caught.value)
+        assert not isinstance(caught.value, CleanupUnconfirmedError)
         assert not list(tmp_path.glob(".container-receipt-*"))
 
 
@@ -189,3 +190,31 @@ def test_context_cleanup_keeps_safe_application_failure(tmp_path):
         raise primary
     assert caught.value.primary is primary
     assert request.receipt_path.exists()
+
+
+def test_observation_failure_after_confirmed_cleanup_is_not_cleanup_uncertainty(
+    tmp_path,
+):
+    """A state-write failure keeps its category when exact cleanup succeeds."""
+    reservation = ContainerReservation(name="owned", labels={"owner": "private"})
+    identity = ContainerIdentity(id="a" * 64, name="owned", labels=reservation.labels)
+    containers, execution = Mock(), Mock()
+    containers.reserve.return_value = reservation
+    containers.create.return_value = identity
+    request = ContainerSession(
+        spec=ContainerSpec(image="sha256:" + "b" * 64, name="owned", stdin_open=True),
+        limits=StreamLimits(seconds=2, max_bytes=1024),
+        receipt_path=tmp_path.joinpath("receipt.json"),
+    )
+    with (
+        patch(
+            "py_docker.containers.receipts.os.replace",
+            side_effect=OSError("private raw control"),
+        ),
+        pytest.raises(DockerOperationError) as caught,
+    ):
+        Sessions(containers, execution).open(request)
+    assert not isinstance(caught.value, CleanupUnconfirmedError)
+    assert caught.value.operation == "record observed container identity"
+    assert not request.receipt_path.exists()
+    containers.remove.assert_called_once_with(identity, force=True)
