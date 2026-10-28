@@ -4,7 +4,11 @@ import math
 import time
 from typing import TYPE_CHECKING
 
-from py_docker.containers.models import CleanupResult, ContainerReservation
+from py_docker.containers.models import (
+    CleanupResult,
+    ContainerObservation,
+    ContainerReservation,
+)
 from py_docker.errors import DockerOperationError, OwnershipConflictError
 
 if TYPE_CHECKING:
@@ -27,21 +31,25 @@ class ContainerWatch:
         self._containers = containers
         self._reservation = reservation
 
-    def inspect(self) -> tuple[str, str | None]:
+    def inspect(self) -> ContainerObservation:
         """Return safe absent/owned/conflict/unknown state and observed ID.
 
         Returns
         -------
-        tuple
-            State and immutable ID; absence does not resolve an unknown create.
+        ContainerObservation
+            Typed state and identity; absence does not resolve an unknown create.
         """
         try:
             identity = self._containers.reconcile(self._reservation)
-            return ("owned", identity.id) if identity is not None else ("absent", None)
+            return (
+                ContainerObservation(state="owned", identity=identity)
+                if identity is not None
+                else ContainerObservation(state="absent")
+            )
         except OwnershipConflictError:
-            return "conflict", None
+            return ContainerObservation(state="conflict")
         except DockerOperationError:
-            return "unknown", None
+            return ContainerObservation(state="unknown")
 
     def cleanup(self, *, watch_seconds: float = 0) -> CleanupResult:
         """Remove owned immutable IDs and optionally watch for delayed creation.
@@ -78,7 +86,7 @@ class ContainerWatch:
             except DockerOperationError:
                 return CleanupResult(verified=False, detail="unknown")
             if time.monotonic() >= deadline:
-                state, _ = self.inspect()
+                state = self.inspect().state
                 verified = state == "absent" and (observed or watch_seconds == 0)
                 detail = (
                     ("removed_after_loss" if watch_seconds else "removed")

@@ -232,6 +232,21 @@ class ContainerIdentity(BaseModel):
     )
 
 
+class ContainerObservation(BaseModel):
+    """Canonical endpoint-scoped observation without exposing ownership labels."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    state: Literal["absent", "owned", "conflict", "unknown"] = Field(
+        description="Confirmed ownership observation or conservative failure category."
+    )
+    identity: ContainerIdentity | None = Field(
+        default=None,
+        repr=False,
+        exclude=True,
+        description="Verified private immutable identity, present only for owned observations.",
+    )
+
+
 class ContainerReservation(BaseModel):
     """Ownership intent retained before sending create, including unknown outcomes."""
 
