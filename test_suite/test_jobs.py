@@ -4,12 +4,14 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 from unittest.mock import MagicMock, Mock
 
 import pytest
 from docker.errors import APIError, DockerException, NotFound
 from pydantic import ValidationError
 
+import py_docker
 from py_docker.containers.models import (
     ContainerIdentity,
     ContainerReservation,
@@ -161,17 +163,26 @@ def test_native_receipt_lock_survives_contention_and_releases_after_process_loss
     job = _job(tmp_path)
     ready = tmp_path.joinpath("ready")
     code = """
-import sys,time
+import os,site,sys,time
+sys.path.insert(0,sys.argv[3])
+site.addsitedir(sys.argv[3])
 from pathlib import Path
 from py_docker.containers.models import ContainerReservation
 from py_docker.containers.receipts import ReceiptStore
 with ReceiptStore(Path(sys.argv[1])) as store:
     store.save(ContainerReservation(name='owned-job',labels={'owner':'private-owner'}))
-    Path(sys.argv[2]).write_text('ready')
+    Path(sys.argv[2]).write_text(str(os.getpid()))
     time.sleep(30)
 """
     process = subprocess.Popen(
-        [sys.executable, "-c", code, str(job.receipt_path), str(ready)],
+        [
+            getattr(sys, "_base_executable", sys.executable),
+            "-c",
+            code,
+            str(job.receipt_path),
+            str(ready),
+            str(Path(py_docker.__file__).resolve().parent.parent),
+        ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
     )
@@ -184,6 +195,9 @@ with ReceiptStore(Path(sys.argv[1])) as store:
         ):
             time.sleep(0.02)
         assert ready.exists(), "Child receipt owner did not become ready"
+        assert int(ready.read_text()) == process.pid, (
+            "Kill the lock owner, not a venv launcher"
+        )
         with pytest.raises(ReceiptInUseError):
             jobs.recover(job.receipt_path)
         assert not containers.mock_calls
