@@ -2,7 +2,11 @@
 
 import uuid
 
+from docker import DockerClient
 from docker.errors import DockerException, NotFound
+from docker.models.containers import Container
+from docker.models.images import Image
+from docker.utils import convert_volume_binds, parse_bytes
 from requests.exceptions import RequestException
 
 from py_docker.containers.models import (
@@ -15,20 +19,57 @@ from py_docker.errors import (
     DockerOperationError,
     OwnershipConflictError,
 )
+from py_docker.settings import OWNERSHIP_LABEL
 
 
 class Containers:
-    """No implicit pull, reuse, prune or forced name replacement."""
+    """No implicit pull, reuse, prune or forced name replacement.
 
-    def __init__(self, sdk):
+    Parameters
+    ----------
+    sdk : DockerClient
+        Existing Docker SDK session; the caller owns its lifetime.
+    """
+
+    def __init__(self, sdk: DockerClient) -> None:
+        """Reuse the supplied SDK session without taking ownership of its lifetime."""
         self.sdk = sdk
 
     def reserve(self, spec: ContainerSpec) -> ContainerReservation:
+        """Prepare a private ownership token before any create request.
+
+        Parameters
+        ----------
+        spec : ContainerSpec
+            Validated launch request including the exact image, name and sandbox options.
+
+        Returns
+        -------
+        ContainerReservation
+            Ownership intent containing the exact name and generated private token.
+        """
         labels = {key: value.get_secret_value() for key, value in spec.labels.items()}
-        labels["py_docker.owner"] = uuid.uuid4().hex
+        labels[OWNERSHIP_LABEL] = uuid.uuid4().hex
         return ContainerReservation(name=spec.name, labels=labels)
 
     def reconcile(self, reservation: ContainerReservation) -> ContainerIdentity | None:
+        """Resolve a reservation by name and verify its exact owned identity.
+
+        Parameters
+        ----------
+        reservation : ContainerReservation
+            Private pre-create ownership receipt retained for uncertain-outcome recovery.
+
+        Returns
+        -------
+        ContainerIdentity | None
+            Verified immutable identity, or None only when the owned ID is absent.
+
+        Raises
+        ------
+        DockerOperationError
+            The operation cannot be confirmed; remote work may still be active.
+        """
         try:
             container = self.sdk.containers.get(reservation.name)
         except NotFound:
@@ -43,6 +84,25 @@ class Containers:
     def create(
         self, spec: ContainerSpec, reservation: ContainerReservation | None = None
     ) -> ContainerIdentity:
+        """Create a local-image container and verify its observed launch policy.
+
+        Parameters
+        ----------
+        spec : ContainerSpec
+            Validated launch request including the exact image, name and sandbox options.
+        reservation : ContainerReservation or None
+            Private pre-create ownership receipt retained for uncertain-outcome recovery.
+
+        Returns
+        -------
+        ContainerIdentity
+            Verified private ownership receipt for the created resource.
+
+        Raises
+        ------
+        CreationUnconfirmedError
+            Creation or readback is unconfirmed; reconcile the attached receipt before retrying.
+        """
         receipt = reservation or self.reserve(spec)
         if receipt.name != spec.name:
             raise OwnershipConflictError("match container reservation")
@@ -50,6 +110,7 @@ class Containers:
             key: value.get_secret_value() for key, value in receipt.labels.items()
         }
         options = spec.model_dump(exclude={"image", "environment", "labels"})
+        options["volumes"] = spec.sdk_volumes()
         options["environment"] = {
             key: value.get_secret_value() for key, value in spec.environment.items()
         }
@@ -75,7 +136,24 @@ class Containers:
                 phase = error.operation
             raise CreationUnconfirmedError(phase, receipt) from None
 
-    def inspect(self, identity: ContainerIdentity):
+    def inspect(self, identity: ContainerIdentity) -> Container | None:
+        """Look up an immutable ID and validate its expected name and labels.
+
+        Parameters
+        ----------
+        identity : ContainerIdentity
+            Exact resource identity and expected private ownership labels.
+
+        Returns
+        -------
+        Container | None
+            Verified SDK resource, or None only for Docker NotFound.
+
+        Raises
+        ------
+        DockerOperationError
+            The operation cannot be confirmed; remote work may still be active.
+        """
         try:
             container = self.sdk.containers.get(identity.id)
         except NotFound:
@@ -96,6 +174,18 @@ class Containers:
         return container
 
     def start(self, identity: ContainerIdentity) -> None:
+        """Start only the exact container whose ownership was checked.
+
+        Parameters
+        ----------
+        identity : ContainerIdentity
+            Exact resource identity and expected private ownership labels.
+
+        Raises
+        ------
+        DockerOperationError
+            The operation cannot be confirmed; remote work may still be active.
+        """
         container = self.inspect(identity)
         if container is None:
             raise DockerOperationError("start missing container")
@@ -111,6 +201,22 @@ class Containers:
         force: bool = False,
         remove_anonymous_volumes: bool = False,
     ) -> None:
+        """Remove the exact owned ID and confirm it no longer exists.
+
+        Parameters
+        ----------
+        identity : ContainerIdentity
+            Exact resource identity and expected private ownership labels.
+        force : bool
+            Whether Docker may stop the exact owned container during removal.
+        remove_anonymous_volumes : bool
+            Explicit permission to remove anonymous volumes with the owned container.
+
+        Raises
+        ------
+        DockerOperationError
+            The operation cannot be confirmed; remote work may still be active.
+        """
         container = self.inspect(identity)
         if container is None:
             return
@@ -123,9 +229,25 @@ class Containers:
         if self.inspect(identity) is not None:
             raise DockerOperationError("confirm container removal")
 
-    def _verify_launch(self, container, spec: ContainerSpec, image) -> None:
-        from docker.utils import convert_volume_binds, parse_bytes
+    def _verify_launch(
+        self, container: Container, spec: ContainerSpec, image: Image
+    ) -> None:
+        """Compare Docker readback against requested sandbox and image defaults.
 
+        Parameters
+        ----------
+        container : Container
+            SDK container read back from the selected Docker daemon.
+        spec : ContainerSpec
+            Validated launch request including the exact image, name and sandbox options.
+        image : Image
+            Locally inspected image supplying immutable ID and inherited defaults.
+
+        Raises
+        ------
+        DockerOperationError
+            The operation cannot be confirmed; remote work may still be active.
+        """
         host = container.attrs.get("HostConfig", {})
         expected = {
             "NetworkMode": spec.network_mode,
@@ -146,7 +268,7 @@ class Containers:
             if set(host.get(key) or []) != set(values):
                 raise OwnershipConflictError("verify container sandbox permissions")
         if sorted(host.get("Binds") or []) != sorted(
-            convert_volume_binds(spec.volumes)
+            convert_volume_binds(spec.sdk_volumes())
         ):
             raise OwnershipConflictError("verify container bind mounts")
         image_config = image.attrs.get("Config", {})

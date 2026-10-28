@@ -2,6 +2,7 @@
 
 import time
 
+from docker import DockerClient
 from docker.errors import DockerException
 from requests.exceptions import RequestException
 
@@ -9,20 +10,49 @@ from py_docker.containers.models import ContainerIdentity
 from py_docker.containers.service import Containers
 from py_docker.errors import DockerOperationError
 from py_docker.execution.models import CommandResult
+from py_docker.execution.settings import EXIT_STATUS_POLL_SECONDS
 from py_docker.streams.models import StreamLimits
 from py_docker.streams.socket import AttachedStream
 
 
 class Execution:
-    """Control requests use the client timeout; acquired streams use StreamLimits."""
+    """Control requests use the client timeout; acquired streams use StreamLimits.
 
-    def __init__(self, sdk):
+    Parameters
+    ----------
+    sdk : DockerClient
+        Existing Docker SDK session; the caller owns its lifetime.
+    """
+
+    def __init__(self, sdk: DockerClient) -> None:
+        """Reuse the SDK session for ownership checks and command transport."""
         self.sdk = sdk
         self.containers = Containers(sdk)
 
     def attach(
         self, identity: ContainerIdentity, limits: StreamLimits, *, stdin: bool = False
     ) -> AttachedStream:
+        """Attach to an owned non-TTY container with a bounded output stream.
+
+        Parameters
+        ----------
+        identity : ContainerIdentity
+            Exact resource identity and expected private ownership labels.
+        limits : StreamLimits
+            Validated combined output-byte limit and acquired-stream lifetime.
+        stdin : bool
+            Whether the attachment should accept request bytes on container stdin.
+
+        Returns
+        -------
+        AttachedStream
+            Acquired stream; the caller must close it and separately reconcile remote work.
+
+        Raises
+        ------
+        DockerOperationError
+            The operation cannot be confirmed; remote work may still be active.
+        """
         container = self.containers.inspect(identity)
         if container is None or container.attrs.get("Config", {}).get("Tty"):
             raise DockerOperationError("attach existing non-TTY container")
@@ -44,6 +74,27 @@ class Execution:
     def run(
         self, identity: ContainerIdentity, command: list[str], limits: StreamLimits
     ) -> CommandResult:
+        """Execute once and confirm binary output and process exit status.
+
+        Parameters
+        ----------
+        identity : ContainerIdentity
+            Exact resource identity and expected private ownership labels.
+        command : list[str]
+            Argument vector executed once inside the already owned container.
+        limits : StreamLimits
+            Validated combined output-byte limit and acquired-stream lifetime.
+
+        Returns
+        -------
+        CommandResult
+            Confirmed exit code and separate undecoded stdout/stderr bytes.
+
+        Raises
+        ------
+        DockerOperationError
+            The operation cannot be confirmed; remote work may still be active.
+        """
         if self.containers.inspect(identity) is None:
             raise DockerOperationError("execute in existing container")
         try:
@@ -62,7 +113,7 @@ class Execution:
                 state = self.sdk.api.exec_inspect(execution["Id"])
                 if not state.get("Running") and isinstance(state.get("ExitCode"), int):
                     break
-                time.sleep(min(0.05, stream._remaining()))
+                time.sleep(min(EXIT_STATUS_POLL_SECONDS, stream.remaining_seconds()))
             return CommandResult(
                 exit_code=state["ExitCode"], stdout=bytes(stdout), stderr=bytes(stderr)
             )

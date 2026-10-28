@@ -1,5 +1,6 @@
 """Immutable local image resolution and matching."""
 
+from docker import DockerClient
 from docker.errors import DockerException
 from requests.exceptions import RequestException
 
@@ -7,12 +8,38 @@ from py_docker.errors import DockerOperationError, OwnershipConflictError
 
 
 class Images:
-    """Resolve local tags without pulling; require expected ID when supplied."""
+    """Resolve local tags without pulling; require expected ID when supplied.
 
-    def __init__(self, sdk):
+    Parameters
+    ----------
+    sdk : DockerClient
+        Existing Docker SDK session; the caller owns its lifetime.
+    """
+
+    def __init__(self, sdk: DockerClient) -> None:
+        """Reuse the supplied SDK session for local image inspection."""
         self.sdk = sdk
 
     def resolve(self, reference: str, *, expected_id: str | None = None) -> str:
+        """Resolve a local image and optionally verify its immutable ID.
+
+        Parameters
+        ----------
+        reference : str
+            Locally installed image name or immutable ID; no pull is attempted.
+        expected_id : str or None
+            Required immutable image ID, or None to return the locally resolved ID.
+
+        Returns
+        -------
+        str
+            Full immutable ID of the locally inspected image.
+
+        Raises
+        ------
+        DockerOperationError
+            The operation cannot be confirmed; remote work may still be active.
+        """
         try:
             image = self.sdk.images.get(reference)
         except (DockerException, RequestException):

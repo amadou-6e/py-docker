@@ -19,6 +19,7 @@ from py_docker.streams.models import StreamLimits
 
 @pytest.mark.integration
 def test_real_binary_exec_and_exact_cleanup():
+    """Exercise real binary output, deadlines and exact owned-container cleanup."""
     image = os.environ.get("PY_DOCKER_TEST_IMAGE")
     if not image:
         pytest.skip("Set PY_DOCKER_TEST_IMAGE to a local image containing python3")
@@ -63,6 +64,7 @@ def test_real_binary_exec_and_exact_cleanup():
 
 @pytest.mark.integration
 def test_real_custom_entrypoint_bind_and_receipt_recovery(monkeypatch, tmp_path):
+    """Exercise real entrypoint and mount behavior plus an internal recovery fault."""
     image = os.environ.get("PY_DOCKER_TEST_IMAGE")
     if not image:
         pytest.skip("Set PY_DOCKER_TEST_IMAGE to a local image containing python3")
@@ -92,6 +94,7 @@ def test_real_custom_entrypoint_bind_and_receipt_recovery(monkeypatch, tmp_path)
                 # Internal fault injection at readback; the Docker resource is real.
                 # This verifies recovery only, not a live daemon misconfiguration.
                 def reject_readback(*_):
+                    """Inject an internal verification failure without simulating a Docker provider."""
                     raise OwnershipConflictError("injected verification failure")
 
                 scoped.setattr(client.containers, "_verify_launch", reject_readback)

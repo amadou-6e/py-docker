@@ -12,6 +12,7 @@ from py_docker.streams.socket import AttachedStream
 
 
 def test_binary_demux_and_clean_eof():
+    """Preserve arbitrary bytes and separate stderr through clean frame EOF."""
     reader, writer = socket.socketpair()
     with (
         writer,
@@ -26,6 +27,7 @@ def test_binary_demux_and_clean_eof():
 
 
 def test_size_rejected_before_payload_read():
+    """Reject oversized frame headers before reading or allocating their payload."""
     reader, writer = socket.socketpair()
     with writer, AttachedStream(reader, StreamLimits(max_bytes=2, seconds=1)) as stream:
         writer.sendall(struct.pack(">BxxxI", 1, 99999999))
@@ -34,6 +36,7 @@ def test_size_rejected_before_payload_read():
 
 
 def test_stalled_read_has_deadline():
+    """Bound a stalled socket read by the original monotonic stream lifetime."""
     reader, writer = socket.socketpair()
     with (
         writer,
@@ -46,6 +49,7 @@ def test_stalled_read_has_deadline():
 
 
 def test_truncated_frame_is_not_eof():
+    """Reject a truncated payload instead of reporting successful stream completion."""
     reader, writer = socket.socketpair()
     with (
         writer,
@@ -58,6 +62,7 @@ def test_truncated_frame_is_not_eof():
 
 
 def test_close_failure_does_not_hide_primary_error():
+    """Preserve the primary failure when transport cleanup also fails."""
     from unittest.mock import Mock
 
     raw = Mock()

@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from py_docker.connection import settings as connection_settings
 from py_docker.connection.models import ResolvedConnection
 from py_docker.connection.settings import ConnectionSettings
 from py_docker.errors import ConnectionConfigurationError
@@ -22,12 +23,30 @@ class ConnectionResolver:
         *,
         allow_remote: bool = False,
     ) -> ResolvedConnection:
-        env = dict(os.environ if environment is None else environment)
+        """Select one supported endpoint without relaxing remote-access policy.
+
+        Parameters
+        ----------
+        settings : ConnectionSettings
+            Validated connection settings supplied by the caller.
+        environment : Mapping[str, str] or None
+            Complete caller environment snapshot; None captures the process environment.
+        allow_remote : bool
+            Explicit permission for supported remote endpoints; never inferred from environment.
+
+        Returns
+        -------
+        ResolvedConnection
+            Selected daemon endpoint, selection source and local-transport status.
+
+        Raises
+        ------
+        ConnectionConfigurationError
+            The endpoint or selected context is unsupported; no resource mutation is sent.
+        """
+        env = ConnectionSettings.environment_snapshot(environment)
         # TLS/SSH support requires a future explicit, tested contract. Never ignore it.
-        if any(
-            env.get(key)
-            for key in ("DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "DOCKER_TLS")
-        ):
+        if any(env.get(key) for key in connection_settings.DOCKER_TLS_ENVIRONMENT_KEYS):
             raise ConnectionConfigurationError("resolve TLS configuration")
         context = settings.context or env.get("DOCKER_CONTEXT")
         if (
@@ -49,9 +68,9 @@ class ConnectionResolver:
             endpoint, source = self._context_endpoint(None, env), "active-context"
         else:
             endpoint = (
-                "npipe:////./pipe/docker_engine"
+                connection_settings.WINDOWS_DEFAULT_ENDPOINT
                 if os.name == "nt"
-                else "unix:///var/run/docker.sock"
+                else connection_settings.UNIX_DEFAULT_ENDPOINT
             )
             source = "platform-default"
         local = endpoint.startswith(("unix:///", "npipe:////./pipe/"))
@@ -69,6 +88,25 @@ class ConnectionResolver:
     def _context_endpoint(
         self, context: str | None, environment: dict[str, str]
     ) -> str:
+        """Read Docker context metadata through the absolute CLI executable.
+
+        Parameters
+        ----------
+        context : str or None
+            Explicit CLI context name, or None for the active context.
+        environment : Mapping[str, str]
+            Complete supplied snapshot; ambient values are not added.
+
+        Returns
+        -------
+        str
+            Selected Docker endpoint; no authentication material is returned.
+
+        Raises
+        ------
+        ConnectionConfigurationError
+            The endpoint or selected context is unsupported; no resource mutation is sent.
+        """
         executable = self._executable(environment)
         if executable is None:
             raise ConnectionConfigurationError("find Docker CLI for context selection")
@@ -77,7 +115,11 @@ class ConnectionResolver:
             command.append(context)
         try:
             result = subprocess.run(
-                command, env=environment, capture_output=True, timeout=10, check=True
+                command,
+                env=environment,
+                capture_output=True,
+                timeout=connection_settings.CONTEXT_INSPECTION_TIMEOUT_SECONDS,
+                check=True,
             )
             value = json.loads(result.stdout)
             if value[0].get("TLSMaterial") or value[0]["Endpoints"]["docker"].get(
@@ -99,7 +141,23 @@ class ConnectionResolver:
             raise ConnectionConfigurationError("resolve Docker context") from None
 
     def _executable(self, environment: Mapping[str, str]) -> str | None:
-        """Search explicit absolute PATH entries, never implicit Windows cwd."""
+        """Find Docker only in explicit absolute PATH directories.
+
+        Parameters
+        ----------
+        environment : Mapping[str, str]
+            Complete supplied snapshot; ambient values are not added.
+
+        Returns
+        -------
+        str | None
+            Absolute executable path, or None when no supported PATH entry contains Docker.
+
+        Raises
+        ------
+        ConnectionConfigurationError
+            The endpoint or selected context is unsupported; no resource mutation is sent.
+        """
         search = next(
             (value for key, value in environment.items() if key.upper() == "PATH"), ""
         )
