@@ -80,6 +80,8 @@ file lock covers recovery, execution and cleanup. Concurrent use fails with
 `ReceiptInUseError` before changing any receipt or sending a job operation;
 the empty sibling `.lock` file may remain and must not be deleted during use.
 Unsupported soft-lock backends and symlink receipt/lock paths are refused.
+Lock contention is a separate `DockerOperationError`, not cleanup uncertainty:
+the other caller may still be running. One store belongs to one thread.
 
 Call `client.jobs.recover(receipt_path)` to reconcile an earlier job explicitly;
 `run` also recovers before reserving a new job. No receipt is a no-op. An observed
@@ -97,6 +99,17 @@ Then inspect the saved name and labels privately, remove only a matching owned
 immutable ID, and clear the receipt only after confirmed absence with no pending
 create. Never log/share ownership labels, delete a live lock file or blindly
 retry a job. These are local single-owner receipts, not a distributed supervisor.
+
+Typed pre-request failures clear only their own unstarted receipt. The create
+endpoint's documented 400 (bad parameter), 404 (missing image) and 409 (conflict)
+responses raise `CreationRejectedError` and also clear that intent without
+deleting any existing resource. Timeout, throttling, server errors, unknown
+responses and all post-create readback failures remain uncertain. No error-text
+parsing or whole-status-family inference is used. The contract follows the
+[Docker create API](https://docs.docker.com/reference/api/engine/version/v1.51/).
+
+This `0.1.0a2` local-trial increment adds `filelock` as a runtime dependency for
+native inter-process exclusion; there is no custom platform lock implementation.
 
 ## Connection and lifecycle boundaries
 Operation phase text is diagnostic wording, not a stable API; use exception

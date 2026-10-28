@@ -4,7 +4,7 @@ import math
 import uuid
 
 from docker import DockerClient
-from docker.errors import DockerException, NotFound
+from docker.errors import APIError, DockerException, NotFound
 from docker.models.containers import Container
 from docker.models.images import Image
 from docker.utils import convert_volume_binds, parse_bytes
@@ -15,7 +15,9 @@ from py_docker.containers.models import (
     ContainerReservation,
     ContainerSpec,
 )
+from py_docker.containers.settings import DEFINITIVE_CREATE_REJECTIONS
 from py_docker.errors import (
+    CreationRejectedError,
     CreationUnconfirmedError,
     DockerOperationError,
     OwnershipConflictError,
@@ -109,6 +111,9 @@ class Containers:
             The local image could not be resolved; no create request was sent.
         CreationUnconfirmedError
             Creation or readback is unconfirmed; reconcile the attached receipt before retrying.
+        CreationRejectedError
+            The create endpoint returned a definitive bad-parameter, missing-image
+            or conflict response. No container was created by this request.
         """
         receipt = reservation or self.reserve(spec)
         if receipt.name != spec.name:
@@ -129,7 +134,12 @@ class Containers:
             raise DockerOperationError("resolve container image") from None
         phase = "create container"
         try:
-            container = self.sdk.containers.create(image.id, **options)
+            try:
+                container = self.sdk.containers.create(image.id, **options)
+            except APIError as error:
+                if error.status_code in DEFINITIVE_CREATE_REJECTIONS:
+                    raise CreationRejectedError("create container", receipt) from None
+                raise
             phase = "validate container receipt"
             identity = ContainerIdentity(id=container.id, name=spec.name, labels=labels)
             phase = "verify container ownership"
@@ -138,6 +148,8 @@ class Containers:
                 raise DockerOperationError("confirm newly created container exists")
             self._verify_launch(owned, spec, image)
             return identity
+        except CreationRejectedError:
+            raise
         except Exception as error:
             if isinstance(error, DockerOperationError):
                 phase = error.operation

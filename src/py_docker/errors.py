@@ -75,6 +75,25 @@ class CreationUnconfirmedError(DockerOperationError):
         super().__init__(operation)
 
 
+class CreationRejectedError(DockerOperationError):
+    """The create endpoint definitively rejected the request without creating it.
+
+    Parameters
+    ----------
+    operation : str
+        Safe create phase, never raw daemon response text.
+    receipt : ContainerReservation
+        Private intent belonging to this rejected request, not any conflicting resource.
+    """
+
+    code = "docker_creation_rejected"
+
+    def __init__(self, operation: str, receipt: ContainerReservation) -> None:
+        """Retain rejected intent without presenting it as an uncertain creation."""
+        self.receipt = receipt
+        super().__init__(operation)
+
+
 class CleanupUnconfirmedError(DockerOperationError):
     """An owned job may remain active; its private receipt must be retained.
 
@@ -109,7 +128,7 @@ class PendingReceiptError(CleanupUnconfirmedError):
     code = "docker_receipt_pending"
 
 
-class ReceiptInUseError(PendingReceiptError):
+class ReceiptInUseError(DockerOperationError):
     """Another caller holds the receipt lock; this attempt sent no cleanup or create."""
 
     code = "docker_receipt_in_use"

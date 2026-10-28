@@ -7,7 +7,7 @@ import time
 from unittest.mock import MagicMock, Mock
 
 import pytest
-from docker.errors import DockerException
+from docker.errors import APIError, DockerException, NotFound
 from pydantic import ValidationError
 
 from py_docker.containers.models import (
@@ -19,12 +19,14 @@ from py_docker.containers.receipts import ReceiptStore
 from py_docker.containers.service import Containers
 from py_docker.errors import (
     CleanupUnconfirmedError,
+    CreationRejectedError,
     CreationUnconfirmedError,
     DeadlineError,
     DockerOperationError,
     PendingReceiptError,
     ReceiptInUseError,
 )
+from py_docker.execution.service import Execution
 from py_docker.jobs.models import ContainerJob
 from py_docker.jobs.service import Jobs
 from py_docker.streams.models import Frame, StreamLimits
@@ -264,6 +266,98 @@ def test_immediate_absence_after_uncertain_create_stays_unconfirmed(tmp_path):
     assert captured.value.primary is primary
     assert job.receipt_path.exists()
     containers.remove.assert_not_called()
+
+
+def test_known_pre_request_failure_clears_intent_without_guessing_remote_cleanup(
+    tmp_path,
+):
+    """A typed image-lookup failure sent no create and must not strand a receipt."""
+    jobs, containers, _ = _runtime()
+    job = _job(tmp_path)
+    original = DockerOperationError("resolve container image")
+    containers.create.side_effect = original
+    with pytest.raises(DockerOperationError) as captured:
+        jobs.run(job)
+    assert captured.value is original
+    assert not job.receipt_path.exists()
+    containers.reconcile.assert_not_called()
+    containers.remove.assert_not_called()
+
+
+@pytest.mark.parametrize("status", [400, 404, 409])
+def test_definitive_create_rejection_clears_receipt_and_never_deletes_conflicting_resource(
+    tmp_path, status
+):
+    """Classify only the create endpoint's documented definitive failure responses."""
+    sdk = Mock()
+    sdk.images.get.return_value.id = "sha256:" + "a" * 64
+    sdk.containers.create.side_effect = APIError(
+        "private response", response=Mock(status_code=status)
+    )
+    job = _job(tmp_path)
+    jobs = Jobs(Containers(sdk), Execution(sdk))
+    with pytest.raises(CreationRejectedError) as captured:
+        jobs.run(job)
+    assert "private response" not in str(captured.value)
+    assert not job.receipt_path.exists()
+    sdk.containers.get.assert_not_called()
+    assert sdk.containers.create.call_count == 1
+
+
+@pytest.mark.parametrize("status", [408, 429, 500])
+def test_timeouts_throttling_and_server_failures_stay_uncertain(tmp_path, status):
+    """Do not infer rejection or absence from undocumented/uncertain responses."""
+    sdk = Mock()
+    sdk.images.get.return_value.id = "sha256:" + "a" * 64
+    sdk.containers.create.side_effect = APIError(
+        "private response", response=Mock(status_code=status)
+    )
+    sdk.containers.get.side_effect = NotFound("not observed")
+    job = _job(tmp_path)
+    with pytest.raises(CleanupUnconfirmedError) as captured:
+        Jobs(Containers(sdk), Execution(sdk)).run(job)
+    assert isinstance(captured.value.primary, CreationUnconfirmedError)
+    assert job.receipt_path.exists()
+    assert sdk.containers.create.call_count == 1
+
+
+def test_readback_not_found_after_successful_create_remains_uncertain(tmp_path):
+    """A definitive rejection classification must never apply after create succeeds."""
+    sdk = Mock()
+    sdk.images.get.return_value.id = "sha256:" + "a" * 64
+    sdk.containers.create.return_value.id = "b" * 64
+    sdk.containers.get.side_effect = NotFound("lost readback")
+    job = _job(tmp_path)
+    with pytest.raises(CleanupUnconfirmedError) as captured:
+        Jobs(Containers(sdk), Execution(sdk)).run(job)
+    assert isinstance(captured.value.primary, CreationUnconfirmedError)
+    assert job.receipt_path.exists()
+
+
+def test_failed_unstarted_receipt_discard_keeps_original_safe_failure(
+    tmp_path, monkeypatch
+):
+    """A filesystem cleanup fault retains the pre-request diagnostic for callers."""
+    jobs, containers, _ = _runtime()
+    original = DockerOperationError("resolve container image")
+    containers.create.side_effect = original
+
+    def cannot_clear(self, reservation):
+        """Inject a private-file failure at the receipt-store boundary."""
+        raise CleanupUnconfirmedError("clear unstarted receipt", reservation)
+
+    monkeypatch.setattr(ReceiptStore, "discard_unstarted", cannot_clear)
+    job = _job(tmp_path)
+    with pytest.raises(CleanupUnconfirmedError) as captured:
+        jobs.run(job)
+    assert captured.value.primary is original
+    assert job.receipt_path.exists()
+    containers.reconcile.assert_not_called()
+
+
+def test_receipt_contention_is_not_an_orphan_cleanup_error():
+    """A live owner must be distinguishable from failed cleanup by exception type."""
+    assert not issubclass(ReceiptInUseError, CleanupUnconfirmedError)
 
 
 def test_unexpected_external_error_is_redacted_and_cleanup_still_runs(tmp_path):

@@ -27,12 +27,14 @@ class ReceiptStore:
         Receipt file within an existing private directory. This class does not
         create directories. Windows privacy depends on the directory's ACLs;
         POSIX files are created with mode 0600. The separate lock file may remain.
+        One store belongs to one thread; other threads/processes use their own
+        store instances and contend on the same native lock.
     """
 
     def __init__(self, path: Path) -> None:
         """Prepare a nonblocking native lock; do not read or change a receipt yet."""
-        self._path = path
-        self._lock_path = path.with_name(path.name + ".lock")
+        self._path = path.absolute()
+        self._lock_path = self._path.with_name(self._path.name + ".lock")
         self._lock = FileLock(self._lock_path, timeout=0, mode=0o600)
 
     def __enter__(self) -> "ReceiptStore":
@@ -136,6 +138,38 @@ class ReceiptStore:
             raise PendingReceiptError("preserve pending container receipt") from None
         except OSError:
             raise DockerOperationError("write private container receipt") from None
+
+    def discard_unstarted(self, reservation: ContainerReservation) -> None:
+        """Clear only this intent after a typed failure proves creation did not happen.
+
+        Parameters
+        ----------
+        reservation : ContainerReservation
+            Exact private intent saved before a known pre-request failure or a
+            definitive create rejection. Never use this for an uncertain request.
+
+        Raises
+        ------
+        CleanupUnconfirmedError
+            The file changed, cannot be read or cannot be removed. Keep the record
+            and report the original safe failure through the primary attribute.
+        RuntimeError
+            The lifecycle lock is not held by this store in the current thread.
+        """
+        self._require_lock()
+        try:
+            stored = ContainerReservation.from_private_record(
+                json.loads(self._path.read_text(encoding="utf-8"))
+            )
+            if stored != reservation:
+                raise CleanupUnconfirmedError(
+                    "verify unstarted container receipt", reservation
+                )
+            self._path.unlink()
+        except Exception:
+            raise CleanupUnconfirmedError(
+                "clear unstarted container receipt", reservation
+            ) from None
 
     def cleanup(
         self,

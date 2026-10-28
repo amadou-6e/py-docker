@@ -4,7 +4,11 @@ from pathlib import Path
 
 from py_docker.containers.receipts import ReceiptStore
 from py_docker.containers.service import Containers
-from py_docker.errors import CleanupUnconfirmedError, DockerOperationError
+from py_docker.errors import (
+    CleanupUnconfirmedError,
+    CreationUnconfirmedError,
+    DockerOperationError,
+)
 from py_docker.execution.models import CommandResult
 from py_docker.execution.service import Execution
 from py_docker.jobs.models import ContainerJob
@@ -37,7 +41,9 @@ class Jobs:
         Raises
         ------
         CleanupUnconfirmedError
-            A pending record cannot be safely cleared, including a live lock owner.
+            A pending record cannot be safely cleared.
+        ReceiptInUseError
+            Another live caller owns the record; no recovery was attempted.
         DockerOperationError
             Local receipt locking is unavailable or unsafe.
         """
@@ -63,6 +69,8 @@ class Jobs:
         CleanupUnconfirmedError
             Cleanup overrides a safe primary failure, retained in its primary
             attribute. The private receipt remains for explicit recovery.
+        ReceiptInUseError
+            Another live caller owns the receipt; no recovery or creation was sent.
         DockerOperationError
             Create, stream or wait cannot be confirmed. No automatic create retry.
 
@@ -79,8 +87,22 @@ class Jobs:
             store.save(receipt)
             identity = None
             primary = None
+            needs_cleanup = True
             try:
-                identity = self._containers.create(job.spec, receipt)
+                try:
+                    identity = self._containers.create(job.spec, receipt)
+                except CreationUnconfirmedError:
+                    raise
+                except DockerOperationError as error:
+                    # Containers.create only returns other typed errors when the
+                    # request was not sent or was definitively rejected.
+                    needs_cleanup = False
+                    try:
+                        store.discard_unstarted(receipt)
+                    except CleanupUnconfirmedError as cleanup:
+                        cleanup.primary = error
+                        raise
+                    raise
                 stdout, stderr = bytearray(), bytearray()
                 with self._execution.attach(identity, job.limits) as stream:
                     self._containers.start(identity)
@@ -101,8 +123,9 @@ class Jobs:
                 primary = DockerOperationError("run one-shot container")
                 raise primary from None
             finally:
-                try:
-                    store.cleanup(self._containers, receipt, identity)
-                except CleanupUnconfirmedError as error:
-                    error.primary = primary
-                    raise error from None
+                if needs_cleanup:
+                    try:
+                        store.cleanup(self._containers, receipt, identity)
+                    except CleanupUnconfirmedError as error:
+                        error.primary = primary
+                        raise error from None
