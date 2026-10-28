@@ -73,3 +73,43 @@ class CreationUnconfirmedError(DockerOperationError):
         """Retain the private receipt needed to reconcile uncertain creation."""
         self.receipt = receipt
         super().__init__(operation)
+
+
+class CleanupUnconfirmedError(DockerOperationError):
+    """An owned job may remain active; its private receipt must be retained.
+
+    Parameters
+    ----------
+    operation : str
+        Safe library phase, never external response text or a private file path.
+    receipt : ContainerReservation or None
+        Canonical ownership intent when readable; None for a corrupt private record.
+    primary : DockerOperationError or None
+        Safe original library failure overridden by cleanup uncertainty. A nonzero
+        process exit is a result, not a primary exception.
+    """
+
+    code = "docker_cleanup_unconfirmed"
+
+    def __init__(
+        self,
+        operation: str,
+        receipt: ContainerReservation | None = None,
+        primary: DockerOperationError | None = None,
+    ) -> None:
+        """Retain recovery intent and the safe original failure without printing secrets."""
+        self.receipt = receipt
+        self.primary = primary
+        super().__init__(operation)
+
+
+class PendingReceiptError(CleanupUnconfirmedError):
+    """A pending private receipt cannot be replaced; no new create request was sent."""
+
+    code = "docker_receipt_pending"
+
+
+class ReceiptInUseError(PendingReceiptError):
+    """Another caller holds the receipt lock; this attempt sent no cleanup or create."""
+
+    code = "docker_receipt_in_use"

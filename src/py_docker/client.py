@@ -12,6 +12,7 @@ from py_docker.containers.service import Containers
 from py_docker.errors import DockerOperationError
 from py_docker.execution.service import Execution
 from py_docker.images.service import Images
+from py_docker.jobs.service import Jobs
 from py_docker.volumes.service import Volumes
 
 
@@ -53,6 +54,7 @@ class Client:
         self.images = Images(self.sdk)
         self.volumes = Volumes(self.sdk)
         self.execution = Execution(self.sdk)
+        self.jobs = Jobs(self.containers, self.execution)
 
     def __enter__(self) -> "Client":
         """Return the owned client for a managed lifetime.

@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "py-docker"
-version = "0.1.0a1"
+version = "0.1.0a2"
 description = "Explicit Docker container lifecycle and bounded execution for Python"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-dependencies = ["docker>=7.2,<8", "requests>=2.32,<3", "pydantic>=2.13,<3", "pydantic-settings>=2.14.2,<3"]
+dependencies = ["docker>=7.2,<8", "requests>=2.32,<3", "pydantic>=2.13,<3", "pydantic-settings>=2.14.2,<3", "filelock>=3.20,<4"]
 
 [project.optional-dependencies]
 test = ["pytest>=8", "ruff==0.17.3"]

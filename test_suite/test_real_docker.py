@@ -14,7 +14,46 @@ from py_docker.errors import (
     OutputLimitError,
     OwnershipConflictError,
 )
+from py_docker.jobs.models import ContainerJob
 from py_docker.streams.models import StreamLimits
+
+
+@pytest.mark.integration
+def test_real_one_shot_job_preserves_binary_result_and_cleans_owned_id(tmp_path):
+    """Use a real local image for a one-shot job with no mounts or credentials."""
+    image = os.environ.get("PY_DOCKER_TEST_IMAGE")
+    if not image:
+        pytest.skip("Set PY_DOCKER_TEST_IMAGE to a local image containing python3")
+    with Client() as client:
+        image_id = client.images.resolve(image)
+        name = "py-docker-job-" + uuid.uuid4().hex
+        job = ContainerJob(
+            spec=ContainerSpec(
+                image=image_id,
+                name=name,
+                command=[
+                    "python3",
+                    "-c",
+                    "import sys;sys.stdout.buffer.write(bytes([0,255,10]));sys.stderr.buffer.write(b'separate');sys.exit(7)",
+                ],
+            ),
+            limits=StreamLimits(seconds=10, max_bytes=65536),
+            receipt_path=tmp_path.joinpath("job-receipt.json"),
+            wait_timeout_seconds=10,
+        )
+        result = client.jobs.run(job)
+        assert (result.exit_code, result.stdout, result.stderr) == (
+            7,
+            bytes([0, 255, 10]),
+            b"separate",
+        )
+        assert not job.receipt_path.exists()
+        assert not any(
+            container.name == name
+            for container in client.sdk.containers.list(
+                all=True, filters={"name": name}
+            )
+        )
 
 
 @pytest.mark.integration

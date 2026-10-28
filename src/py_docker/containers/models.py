@@ -1,5 +1,7 @@
 """Typed container policy and exact resource identities."""
 
+from collections.abc import Mapping
+
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from py_docker.containers import settings
@@ -165,3 +167,42 @@ class ContainerReservation(BaseModel):
         exclude=True,
         description="Private expected ownership labels retained before creation.",
     )
+
+    @classmethod
+    def from_private_record(
+        cls, record: Mapping[str, object]
+    ) -> "ContainerReservation":
+        """Validate a private ownership record without exposing its input on errors.
+
+        Parameters
+        ----------
+        record : Mapping[str, object]
+            Private file data containing the exact name and plaintext ownership labels.
+
+        Returns
+        -------
+        ContainerReservation
+            Canonical validated ownership intent, with labels protected as secrets.
+
+        Raises
+        ------
+        ValueError
+            The private record does not satisfy the ownership schema.
+        """
+        return cls.model_validate(record)
+
+    def to_private_record(self) -> dict[str, object]:
+        """Expose ownership secrets solely for an explicitly private local file.
+
+        Returns
+        -------
+        dict[str, object]
+            Exact name and plaintext ownership labels. Never log, publish or use
+            this conversion as a public serialization; normal dumps omit labels.
+        """
+        return {
+            "name": self.name,
+            "labels": {
+                key: value.get_secret_value() for key, value in self.labels.items()
+            },
+        }
