@@ -30,13 +30,19 @@ class Volumes:
         """Reuse the SDK session for explicit volume creation and inspection."""
         self.sdk = sdk
 
-    def create(self, prefix: str = DEFAULT_VOLUME_PREFIX) -> VolumeIdentity:
+    def create(
+        self, prefix: str = DEFAULT_VOLUME_PREFIX, *, name: str | None = None
+    ) -> VolumeIdentity:
         """Create a unique volume and verify its private ownership label.
 
         Parameters
         ----------
         prefix : str
             Human-readable prefix for a generated unique volume name.
+        name : str or None
+            Explicit reserved name when persistent application profiles require
+            stable naming. Existing volumes are never adopted: generated owner
+            labels must match readback, including a racing existing name.
 
         Returns
         -------
@@ -49,7 +55,7 @@ class Volumes:
             The daemon may have created the volume; reconcile the attached receipt.
         """
         token = uuid.uuid4().hex
-        name = f"{prefix}-{token}"
+        name = name if name is not None else f"{prefix}-{token}"
         labels = {OWNERSHIP_LABEL: token}
         receipt = VolumeIdentity(name=name, labels=labels)
         try:

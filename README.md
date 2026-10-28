@@ -42,6 +42,19 @@ both output channels before starting the container. `write(bytes)` sends stdin;
 `read_frame()` returns undecoded stdout/stderr frames. One reader and serialized
 writers share the original lifetime and combined byte budget.
 
+`read_line()` is an alternative to frame mode: it preserves channel and newline
+bytes, buffers split frames, and returns final unterminated output before EOF.
+Choose one mode per session; decoding and application protocols remain with the
+caller. `exited()` checks process state after EOF and rejects a still-running
+process rather than reporting success. Closing on the creator thread removes the
+exact container before detaching and unblocks a concurrent reader.
+
+`client.containers.watch(reservation)` supervises an exact private reservation on
+that client's endpoint. `inspect()` returns safe observation categories;
+`cleanup(watch_seconds=...)` removes only verified immutable IDs. A loss watch
+that never observes a container remains unverified even if the name is absent.
+It never resolves an unknown create through a timed-absence shortcut.
+
 `state()` returns a validated `ContainerState`; removal never invents an exit
 code. `wait(timeout)` confirms exit independently. `terminate()` may run from
 another thread and removes only the verified immutable ID. It deliberately
