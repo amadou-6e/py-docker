@@ -356,6 +356,13 @@ class ContainerReceipt(BaseModel):
         pattern=r"^[0-9a-f]{64}$",
         description="Immutable ID returned and ownership-verified by a completed create.",
     )
+    endpoint: str | None = Field(
+        default=None,
+        min_length=1,
+        repr=False,
+        exclude=True,
+        description="Original resolved daemon endpoint; legacy records without it cannot be recovered automatically.",
+    )
 
     @property
     def identity(self) -> ContainerIdentity | None:
@@ -384,9 +391,11 @@ class ContainerReceipt(BaseModel):
         """
         value = dict(record)
         observed = value.pop("observed_id", None)
+        endpoint = value.pop("endpoint", None)
         return cls(
             reservation=ContainerReservation.from_private_record(value),
             observed_id=observed,
+            endpoint=endpoint,
         )
 
     def to_private_record(self) -> dict[str, object]:
@@ -400,6 +409,8 @@ class ContainerReceipt(BaseModel):
         value = self.reservation.to_private_record()
         if self.observed_id is not None:
             value["observed_id"] = self.observed_id
+        if self.endpoint is not None:
+            value["endpoint"] = self.endpoint
         return value
 
 

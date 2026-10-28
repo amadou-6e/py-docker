@@ -81,10 +81,15 @@ class Jobs:
         held through recovery, creation and cleanup; another caller cannot steal
         a live job by recovering its receipt. Caller directories must be private.
         """
+        if (
+            not isinstance(self._containers.endpoint, str)
+            or not self._containers.endpoint
+        ):
+            raise DockerOperationError("record original container endpoint")
         with ReceiptStore(job.receipt_path) as store:
             store.recover(self._containers)
             receipt = self._containers.reserve(job.spec)
-            store.save(receipt)
+            store.save(receipt, endpoint=self._containers.endpoint)
             identity = None
             primary = None
             needs_cleanup = True

@@ -61,6 +61,11 @@ class Sessions:
         DockerOperationError
             Launch, attachment or start failed; there is no automatic retry.
         """
+        if (
+            not isinstance(self._containers.endpoint, str)
+            or not self._containers.endpoint
+        ):
+            raise DockerOperationError("record original container endpoint")
         store = ReceiptStore(request.receipt_path)
         store.__enter__()
         reservation = None
@@ -70,7 +75,7 @@ class Sessions:
         try:
             store.recover(self._containers)
             reservation = self._containers.reserve(request.spec)
-            store.save(reservation)
+            store.save(reservation, endpoint=self._containers.endpoint)
             pending = True
             try:
                 identity = self._containers.create(request.spec, reservation)

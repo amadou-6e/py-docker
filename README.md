@@ -62,6 +62,15 @@ another thread and removes only the verified immutable ID. It deliberately
 leaves the receipt for `close()` on the creator thread, which confirms removal,
 clears intent, detaches and releases its native lock. Keep the Client open for
 the entire session. Closing an attachment alone never establishes termination.
+`session.cleanup_confirmed` becomes true only after creator-thread removal,
+receipt clearing and stream closure all succeed. Application supervision can
+reuse that confirmation instead of issuing a second normal-path cleanup.
+
+Job and session receipts include the original resolved daemon endpoint. Recovery
+refuses missing or mismatched endpoint information before inspecting or removing
+anything, retaining the receipt. Legacy records without endpoint provenance
+require explicit host reconciliation; the library never guesses the daemon or
+silently fills in missing provenance. Use the original endpoint for recovery.
 
 `ContainerSpec` also supports an init process, a CPU quota in nanocpus, explicit
 host aliases and loopback-only published ports such as `ports={"4096/tcp": None}`.

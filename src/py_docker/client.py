@@ -51,7 +51,7 @@ class Client:
             )
         except (DockerException, RequestException):
             raise DockerOperationError("connect to Docker") from None
-        self.containers = Containers(self.sdk)
+        self.containers = Containers(self.sdk, endpoint=self.connection.endpoint)
         self.images = Images(self.sdk)
         self.volumes = Volumes(self.sdk)
         self.execution = Execution(self.sdk)

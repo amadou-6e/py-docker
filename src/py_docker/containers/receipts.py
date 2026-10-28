@@ -111,6 +111,8 @@ class ReceiptStore:
             receipt = ContainerReceipt.from_private_record(value)
         except (OSError, ValueError, TypeError):
             raise CleanupUnconfirmedError("read private container receipt") from None
+        if not receipt.endpoint or receipt.endpoint != containers.endpoint:
+            raise CleanupUnconfirmedError("verify original container endpoint")
         self.cleanup(containers, receipt.reservation, receipt.identity)
 
     def observe(
@@ -152,7 +154,9 @@ class ReceiptStore:
             with os.fdopen(descriptor, "w", encoding="utf-8") as target:
                 json.dump(
                     ContainerReceipt(
-                        reservation=reservation, observed_id=identity.id
+                        reservation=reservation,
+                        observed_id=identity.id,
+                        endpoint=stored.endpoint,
                     ).to_private_record(),
                     target,
                 )
@@ -169,13 +173,18 @@ class ReceiptStore:
                     # Preserve the safe observation failure, not a raw filesystem error.
                     pass
 
-    def save(self, reservation: ContainerReservation) -> None:
+    def save(
+        self, reservation: ContainerReservation, *, endpoint: str | None = None
+    ) -> None:
         """Flush ownership intent to an exclusive private file before a create request.
 
         Parameters
         ----------
         reservation : ContainerReservation
             Canonical private intent; secret conversion is confined to this file.
+        endpoint : str or None
+            Original resolved daemon endpoint. None writes a legacy record that
+            automatic recovery must refuse rather than guess a daemon.
 
         Raises
         ------
@@ -192,7 +201,12 @@ class ReceiptStore:
                 self._path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
             )
             with os.fdopen(descriptor, "w", encoding="utf-8") as target:
-                json.dump(reservation.to_private_record(), target)
+                json.dump(
+                    ContainerReceipt(
+                        reservation=reservation, endpoint=endpoint
+                    ).to_private_record(),
+                    target,
+                )
                 target.flush()
                 os.fsync(target.fileno())
         except FileExistsError:
@@ -219,9 +233,9 @@ class ReceiptStore:
         """
         self._require_lock()
         try:
-            stored = ContainerReservation.from_private_record(
+            stored = ContainerReceipt.from_private_record(
                 json.loads(self._path.read_text(encoding="utf-8"))
-            )
+            ).reservation
             if stored != reservation:
                 raise CleanupUnconfirmedError(
                     "verify unstarted container receipt", reservation

@@ -35,11 +35,15 @@ class Containers:
     ----------
     sdk : DockerClient
         Existing Docker SDK session; the caller owns its lifetime.
+    endpoint : str or None
+        Original resolved connection endpoint. Lifecycle jobs and sessions require
+        it so recovery cannot infer absence on a different daemon.
     """
 
-    def __init__(self, sdk: DockerClient) -> None:
+    def __init__(self, sdk: DockerClient, *, endpoint: str | None = None) -> None:
         """Reuse the supplied SDK session without taking ownership of its lifetime."""
         self.sdk = sdk
+        self.endpoint = endpoint
 
     def watch(self, reservation: ContainerReservation) -> ContainerWatch:
         """Return an endpoint-bound observation and cleanup handle.

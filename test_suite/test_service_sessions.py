@@ -5,9 +5,14 @@ from unittest.mock import Mock
 import pytest
 from pydantic import ValidationError
 
-from py_docker.containers.models import ContainerIdentity, ContainerSpec
+from py_docker.containers.models import (
+    ContainerIdentity,
+    ContainerReservation,
+    ContainerSpec,
+)
+from py_docker.containers.receipts import ReceiptStore
 from py_docker.containers.service import Containers
-from py_docker.errors import DockerOperationError
+from py_docker.errors import CleanupUnconfirmedError, DockerOperationError
 from py_docker.volumes.service import Volumes
 
 
@@ -47,3 +52,20 @@ def test_legacy_volume_label_check_grants_no_mutation():
     with pytest.raises(DockerOperationError):
         volumes.has_labels("profile", {})
     sdk.volumes.remove.assert_not_called()
+
+
+@pytest.mark.parametrize("original", [None, "unix:///original.sock"])
+def test_recovery_preserves_legacy_and_wrong_endpoint_receipts(tmp_path, original):
+    """Neither missing provenance nor another daemon proves remote absence."""
+    path = tmp_path.joinpath("receipt.json")
+    reservation = ContainerReservation(name="owned", labels={"owner": "secret"})
+    identity = ContainerIdentity(id="a" * 64, name="owned", labels=reservation.labels)
+    containers = Mock(endpoint="unix:///different.sock")
+    with ReceiptStore(path) as store:
+        store.save(reservation, endpoint=original)
+        store.observe(reservation, identity)
+        before = path.read_bytes()
+        with pytest.raises(CleanupUnconfirmedError):
+            store.recover(containers)
+        assert path.read_bytes() == before
+        assert not containers.mock_calls

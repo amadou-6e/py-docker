@@ -50,7 +50,7 @@ def test_lines_preserve_channels_partial_utf8_and_final_bytes():
 
 def test_eof_is_not_process_success():
     """A running process after EOF is an uncertain transport, never success."""
-    containers, stream = Mock(), Mock()
+    containers, stream = Mock(endpoint="unix:///test.sock"), Mock()
     stream.read_frame.return_value = None
     containers.state.return_value.running = True
     session = Session(containers, Mock(), Mock(), Mock(), stream)
@@ -62,7 +62,7 @@ def test_eof_is_not_process_success():
 
 def test_reservation_watch_never_promotes_unobserved_absence():
     """A bounded period without an observed create is not cleanup proof."""
-    containers = Mock()
+    containers = Mock(endpoint="unix:///test.sock")
     containers.reconcile.return_value = None
     watch = ContainerWatch(
         containers, ContainerReservation(name="owned", labels={"owner": "secret"})
@@ -74,7 +74,7 @@ def test_reservation_watch_never_promotes_unobserved_absence():
 
 def test_reservation_watch_removes_only_verified_identity():
     """Removal uses the observed immutable ID, never the reservation name."""
-    containers = Mock()
+    containers = Mock(endpoint="unix:///test.sock")
     identity = ContainerIdentity(id="a" * 64, name="owned", labels={"owner": "secret"})
     containers.reconcile.side_effect = [identity, None]
     result = ContainerWatch(
@@ -86,7 +86,7 @@ def test_reservation_watch_removes_only_verified_identity():
 
 def test_reservation_watch_refuses_lookalike_ownership():
     """A matching name never authorizes removing another owner's resource."""
-    containers = Mock()
+    containers = Mock(endpoint="unix:///test.sock")
     containers.reconcile.side_effect = OwnershipConflictError("verify reservation")
     watch = ContainerWatch(
         containers, ContainerReservation(name="owned", labels={"owner": "private"})
@@ -98,7 +98,7 @@ def test_reservation_watch_refuses_lookalike_ownership():
 
 def test_reservation_watch_removes_a_create_observed_after_initial_absence():
     """Keep watching across initial absence and remove the later immutable ID."""
-    containers = Mock()
+    containers = Mock(endpoint="unix:///test.sock")
     identity = ContainerIdentity(id="a" * 64, name="owned", labels={"owner": "private"})
     containers.reconcile.side_effect = [None, identity, None]
     watch = ContainerWatch(
@@ -121,11 +121,11 @@ def test_observed_id_recovery_accepts_external_supervisor_removal(tmp_path):
         id="a" * 64, name=reservation.name, labels=reservation.labels
     )
     with ReceiptStore(path) as store:
-        store.save(reservation)
+        store.save(reservation, endpoint="unix:///test.sock")
         store.observe(reservation, identity)
     recorded = ContainerReceipt.from_private_record(json.loads(path.read_text()))
     assert recorded.identity == identity
-    containers = Mock()
+    containers = Mock(endpoint="unix:///test.sock")
     with ReceiptStore(path) as store:
         store.recover(containers)
     containers.reconcile.assert_not_called()
@@ -140,7 +140,7 @@ def test_session_attach_before_start_observed_id_and_cross_thread_terminate(tmp_
     identity = ContainerIdentity(
         id="a" * 64, name=reservation.name, labels=reservation.labels
     )
-    containers, execution = Mock(), Mock()
+    containers, execution = Mock(endpoint="unix:///test.sock"), Mock()
     containers.reserve.return_value = reservation
     containers.create.return_value = identity
     ordered = Mock()
@@ -174,7 +174,7 @@ def test_observed_id_cannot_be_rebound(tmp_path):
     path = tmp_path.joinpath("receipt.json")
     reservation = ContainerReservation(name="owned", labels={"owner": "private"})
     with ReceiptStore(path) as store:
-        store.save(reservation)
+        store.save(reservation, endpoint="unix:///test.sock")
         store.observe(
             reservation,
             ContainerIdentity(id="a" * 64, name="owned", labels=reservation.labels),
@@ -225,7 +225,7 @@ def test_observation_replace_failure_keeps_original_intent(tmp_path):
     reservation = ContainerReservation(name="owned", labels={"owner": "private"})
     identity = ContainerIdentity(id="a" * 64, name="owned", labels=reservation.labels)
     with ReceiptStore(path) as store:
-        store.save(reservation)
+        store.save(reservation, endpoint="unix:///test.sock")
         before = path.read_bytes()
         with patch(
             "py_docker.containers.receipts.os.replace",
@@ -244,7 +244,7 @@ def test_session_open_failure_cleans_once_and_preserves_safe_primary(tmp_path, p
     """A partially opened session never retries create or strands observed intent."""
     reservation = ContainerReservation(name="owned", labels={"owner": "private"})
     identity = ContainerIdentity(id="a" * 64, name="owned", labels=reservation.labels)
-    containers, execution = Mock(), Mock()
+    containers, execution = Mock(endpoint="unix:///test.sock"), Mock()
     containers.reserve.return_value = reservation
     containers.create.return_value = identity
     primary = DockerOperationError("internal " + phase)
@@ -266,7 +266,7 @@ def test_context_cleanup_keeps_safe_application_failure(tmp_path):
     """Cleanup uncertainty takes precedence while retaining the safe primary code."""
     reservation = ContainerReservation(name="owned", labels={"owner": "private"})
     identity = ContainerIdentity(id="a" * 64, name="owned", labels=reservation.labels)
-    containers, execution = Mock(), Mock()
+    containers, execution = Mock(endpoint="unix:///test.sock"), Mock()
     containers.reserve.return_value = reservation
     containers.create.return_value = identity
     containers.remove.side_effect = DockerOperationError("internal removal control")
@@ -291,7 +291,7 @@ def test_observation_failure_after_confirmed_cleanup_is_not_cleanup_uncertainty(
     """A state-write failure keeps its category when exact cleanup succeeds."""
     reservation = ContainerReservation(name="owned", labels={"owner": "private"})
     identity = ContainerIdentity(id="a" * 64, name="owned", labels=reservation.labels)
-    containers, execution = Mock(), Mock()
+    containers, execution = Mock(endpoint="unix:///test.sock"), Mock()
     containers.reserve.return_value = reservation
     containers.create.return_value = identity
     request = ContainerSession(

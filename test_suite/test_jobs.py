@@ -15,6 +15,7 @@ from pydantic import ValidationError
 import py_docker
 from py_docker.containers.models import (
     ContainerIdentity,
+    ContainerReceipt,
     ContainerReservation,
     ContainerSpec,
 )
@@ -66,7 +67,7 @@ def _runtime():
     tuple[Jobs, Mock, Mock]
         Real job orchestrator and its injected container/execution services.
     """
-    containers, execution = Mock(), MagicMock()
+    containers, execution = Mock(endpoint="unix:///test.sock"), MagicMock()
     receipt = ContainerReservation(name="owned-job", labels={"owner": "private-owner"})
     identity = ContainerIdentity(id="b" * 64, name=receipt.name, labels=receipt.labels)
     containers.reserve.return_value = receipt
@@ -125,9 +126,9 @@ def test_receipt_is_exclusive_private_and_saved_before_create(tmp_path):
     def create(spec, supplied):
         assert supplied == receipt
         assert (
-            ContainerReservation.from_private_record(
+            ContainerReceipt.from_private_record(
                 __import__("json").loads(job.receipt_path.read_text())
-            )
+            ).reservation
             == receipt
         )
         if os.name != "nt":
@@ -137,10 +138,10 @@ def test_receipt_is_exclusive_private_and_saved_before_create(tmp_path):
     containers.create.side_effect = create
     jobs.run(job)
     with ReceiptStore(job.receipt_path) as store:
-        store.save(receipt)
+        store.save(receipt, endpoint="unix:///test.sock")
         before = job.receipt_path.read_bytes()
         with pytest.raises(PendingReceiptError):
-            store.save(receipt)
+            store.save(receipt, endpoint="unix:///test.sock")
         assert job.receipt_path.read_bytes() == before
 
 
@@ -172,7 +173,7 @@ from pathlib import Path
 from py_docker.containers.models import ContainerReservation
 from py_docker.containers.receipts import ReceiptStore
 with ReceiptStore(Path(sys.argv[1])) as store:
-    store.save(ContainerReservation(name='owned-job',labels={'owner':'private-owner'}))
+    store.save(ContainerReservation(name='owned-job',labels={'owner':'private-owner'}),endpoint='unix:///test.sock')
     Path(sys.argv[2]).write_text(str(os.getpid()))
     time.sleep(30)
 """
@@ -197,7 +198,16 @@ with ReceiptStore(Path(sys.argv[1])) as store:
             and time.monotonic() < deadline
         ):
             time.sleep(0.02)
-        assert ready.exists(), "Child receipt owner did not become ready"
+        if not ready.exists():
+            diagnostic = (
+                process.stderr.read().decode("utf-8", errors="replace")
+                if process.poll() is not None
+                else "child still running"
+            )
+            raise AssertionError(
+                "Child receipt owner did not become ready: " + diagnostic
+            )
+
         assert int(ready.read_text()) == process.pid, (
             "Kill the lock owner, not a venv launcher"
         )
@@ -221,7 +231,7 @@ def test_recovery_of_observed_container_removes_exact_id_and_receipt(tmp_path):
     jobs, containers, _ = _runtime()
     job = _job(tmp_path)
     with ReceiptStore(job.receipt_path) as store:
-        store.save(containers.reserve.return_value)
+        store.save(containers.reserve.return_value, endpoint="unix:///test.sock")
     jobs.recover(job.receipt_path)
     containers.remove.assert_called_once_with(
         containers.reconcile.return_value, force=True
@@ -235,7 +245,7 @@ def test_uncertain_recovery_retains_receipt_and_refuses_new_create(tmp_path, sta
     jobs, containers, _ = _runtime()
     job = _job(tmp_path)
     with ReceiptStore(job.receipt_path) as store:
-        store.save(containers.reserve.return_value)
+        store.save(containers.reserve.return_value, endpoint="unix:///test.sock")
     if state == "absent":
         containers.reconcile.return_value = None
     elif state == "corrupt":
@@ -312,7 +322,7 @@ def test_definitive_create_rejection_clears_receipt_and_never_deletes_conflictin
         "private response", response=Mock(status_code=status)
     )
     job = _job(tmp_path)
-    jobs = Jobs(Containers(sdk), Execution(sdk))
+    jobs = Jobs(Containers(sdk, endpoint="unix:///test.sock"), Execution(sdk))
     with pytest.raises(CreationRejectedError) as captured:
         jobs.run(job)
     assert "private response" not in str(captured.value)
@@ -332,7 +342,7 @@ def test_timeouts_throttling_and_server_failures_stay_uncertain(tmp_path, status
     sdk.containers.get.side_effect = NotFound("not observed")
     job = _job(tmp_path)
     with pytest.raises(CleanupUnconfirmedError) as captured:
-        Jobs(Containers(sdk), Execution(sdk)).run(job)
+        Jobs(Containers(sdk, endpoint="unix:///test.sock"), Execution(sdk)).run(job)
     assert isinstance(captured.value.primary, CreationUnconfirmedError)
     assert job.receipt_path.exists()
     assert sdk.containers.create.call_count == 1
@@ -346,7 +356,7 @@ def test_readback_not_found_after_successful_create_remains_uncertain(tmp_path):
     sdk.containers.get.side_effect = NotFound("lost readback")
     job = _job(tmp_path)
     with pytest.raises(CleanupUnconfirmedError) as captured:
-        Jobs(Containers(sdk), Execution(sdk)).run(job)
+        Jobs(Containers(sdk, endpoint="unix:///test.sock"), Execution(sdk)).run(job)
     assert isinstance(captured.value.primary, CreationUnconfirmedError)
     assert job.receipt_path.exists()
 
@@ -418,7 +428,7 @@ def test_owned_wait_rejects_malformed_status_without_exposing_it(status):
     }
     container.wait.return_value = status
     with pytest.raises(DockerOperationError):
-        Containers(sdk).wait(identity, timeout=2)
+        Containers(sdk, endpoint="unix:///test.sock").wait(identity, timeout=2)
 
 
 def test_wait_transport_failure_is_safe_and_distinct_from_process_exit():
@@ -427,5 +437,5 @@ def test_wait_transport_failure_is_safe_and_distinct_from_process_exit():
     identity = ContainerIdentity(id="b" * 64, name="job", labels={"owner": "expected"})
     sdk.containers.get.side_effect = DockerException("external private payload")
     with pytest.raises(DockerOperationError) as captured:
-        Containers(sdk).wait(identity, timeout=2)
+        Containers(sdk, endpoint="unix:///test.sock").wait(identity, timeout=2)
     assert "external private payload" not in str(captured.value)

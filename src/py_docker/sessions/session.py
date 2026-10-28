@@ -49,6 +49,7 @@ class Session:
         self._creator = threading.get_ident()
         self._termination_lock = threading.Lock()
         self._closed = False
+        self._cleanup_confirmed = False
         self._read_mode = None
         self._eof = False
         self._line_buffers = {"stdout": bytearray(), "stderr": bytearray()}
@@ -66,6 +67,11 @@ class Session:
             if isinstance(_[1], DockerOperationError):
                 error.primary = _[1]
             raise
+
+    @property
+    def cleanup_confirmed(self) -> bool:
+        """Whether creator-thread close confirmed removal, receipt and stream cleanup."""
+        return self._cleanup_confirmed
 
     def read_frame(self) -> Frame | None:
         """Read one binary output frame; None means attachment EOF, not success.
@@ -210,6 +216,7 @@ class Session:
             except DockerOperationError as failure:
                 error = error or failure
             self._closed = True
+            self._cleanup_confirmed = error is None
         if error is not None:
             raise error
 
