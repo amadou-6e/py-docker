@@ -15,7 +15,11 @@ from py_docker.containers.models import (
 )
 from py_docker.containers.receipts import ReceiptStore
 from py_docker.containers.watch import ContainerWatch
-from py_docker.errors import CleanupUnconfirmedError, DockerOperationError
+from py_docker.errors import (
+    CleanupUnconfirmedError,
+    DockerOperationError,
+    OwnershipConflictError,
+)
 from py_docker.sessions.models import ContainerSession
 from py_docker.sessions.service import Sessions
 from py_docker.sessions.session import Session
@@ -77,6 +81,35 @@ def test_reservation_watch_removes_only_verified_identity():
         containers, ContainerReservation(name="owned", labels={"owner": "secret"})
     ).cleanup()
     assert result.verified and result.detail == "removed"
+    containers.remove.assert_called_once_with(identity, force=True)
+
+
+def test_reservation_watch_refuses_lookalike_ownership():
+    """A matching name never authorizes removing another owner's resource."""
+    containers = Mock()
+    containers.reconcile.side_effect = OwnershipConflictError("verify reservation")
+    watch = ContainerWatch(
+        containers, ContainerReservation(name="owned", labels={"owner": "private"})
+    )
+    assert watch.inspect().state == "conflict"
+    assert not watch.cleanup().verified
+    containers.remove.assert_not_called()
+
+
+def test_reservation_watch_removes_a_create_observed_after_initial_absence():
+    """Keep watching across initial absence and remove the later immutable ID."""
+    containers = Mock()
+    identity = ContainerIdentity(id="a" * 64, name="owned", labels={"owner": "private"})
+    containers.reconcile.side_effect = [None, identity, None]
+    watch = ContainerWatch(
+        containers, ContainerReservation(name="owned", labels={"owner": "private"})
+    )
+    with (
+        patch("py_docker.containers.watch.time.monotonic", side_effect=[0, 0, 0.5, 2]),
+        patch("py_docker.containers.watch.time.sleep"),
+    ):
+        result = watch.cleanup(watch_seconds=1)
+    assert result.verified and result.detail == "removed_after_loss"
     containers.remove.assert_called_once_with(identity, force=True)
 
 
