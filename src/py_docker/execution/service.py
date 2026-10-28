@@ -1,6 +1,7 @@
 """Explicit attach/exec APIs. No retry if the execution outcome is uncertain."""
 
 from docker.errors import DockerException
+from requests.exceptions import RequestException
 
 from py_docker.containers.models import ContainerIdentity
 from py_docker.containers.service import Containers
@@ -23,7 +24,7 @@ class Execution:
             raise DockerOperationError("attach existing non-TTY container")
         try:
             raw = self.sdk.api.attach_socket(identity.id, params={"stdin": stdin, "stdout": True, "stderr": True, "stream": True, "logs": False})
-        except DockerException:
+        except (DockerException, RequestException):
             raise DockerOperationError("attach container") from None
         return AttachedStream(raw, limits)
 
@@ -44,5 +45,5 @@ class Execution:
             if state.get("Running") or not isinstance(state.get("ExitCode"), int):
                 raise DockerOperationError("confirm command exit")
             return CommandResult(exit_code=state["ExitCode"], stdout=bytes(stdout), stderr=bytes(stderr))
-        except DockerException:
+        except (DockerException, RequestException):
             raise DockerOperationError("execute container command") from None

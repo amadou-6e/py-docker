@@ -43,6 +43,8 @@ class ConnectionResolver:
         try:
             result = subprocess.run(command, env=environment, capture_output=True, timeout=10, check=True)
             value = json.loads(result.stdout)
+            if value[0].get("TLSMaterial") or value[0]["Endpoints"]["docker"].get("SkipTLSVerify"):
+                raise ValueError("unsupported context TLS policy")
             endpoint = value[0]["Endpoints"]["docker"]["Host"]
             if not isinstance(endpoint, str):
                 raise ValueError("invalid endpoint")

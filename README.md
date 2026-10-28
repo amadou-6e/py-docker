@@ -34,7 +34,15 @@ the SDK. Credential copying is application policy and is not implemented here.
 Database helpers and the existing `docker_db` API live in
 https://github.com/amadou-6e/pydocker-db. They are separate dependencies.
 
-Pending before release: bounded attach/exec/archive APIs, volume helpers, real
-Windows/Linux parity, full independent review and packaging checks. The Python
+Attach and exec return binary frames with output limits and monotonic stream
+deadlines. API acquisition/inspection has a separate client timeout; this is not
+an end-to-end command deadline. Closing an attach socket does not stop the
+container, and there is no cross-platform stdin half-close guarantee. Fresh,
+unique volume creation verifies its ownership token; generic volume deletion is
+not exposed because volumes lack immutable IDs. Applications own credential
+selection, lease supervision and recovery UI.
+
+Pending before release: archive APIs, Unix-socket parity, end-to-end command
+deadline design, full independent review and packaging checks. The Python
 import `py_docker` does not shadow the official SDK's `docker` import. A missing
 PyPI project page does not guarantee name registration.

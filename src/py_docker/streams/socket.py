@@ -1,6 +1,7 @@
 """Docker multiplexed frames with deadlines including partial reads/writes."""
 
 import struct
+import os
 import threading
 import time
 
@@ -40,7 +41,11 @@ class AttachedStream:
                 raise DeadlineError("read container stream") from None
             except DockerOperationError:
                 raise
-            except Exception:
+            except Exception as error:
+                # Docker closes a completed exec stream with ERROR_BROKEN_PIPE
+                # on Windows. Only a frame-boundary close is a clean EOF.
+                if os.name == "nt" and getattr(error, "winerror", None) == 109 and offset == 0 and allow_eof:
+                    return b""
                 raise DockerOperationError("read container stream") from None
             if not count:
                 if offset == 0 and allow_eof:

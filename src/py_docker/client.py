@@ -1,10 +1,11 @@
 """Owned SDK client with explicit endpoint identity and reusable services."""
 
-import docker
 from docker.errors import DockerException
+from requests.exceptions import RequestException
 
 from py_docker.connection.resolver import ConnectionResolver
 from py_docker.connection.settings import ConnectionSettings
+from py_docker.connection.sdk import DirectDockerClient
 from py_docker.containers.service import Containers
 from py_docker.errors import DockerOperationError
 from py_docker.execution.service import Execution
@@ -19,8 +20,8 @@ class Client:
         self.settings = settings or ConnectionSettings()
         self.connection = ConnectionResolver().resolve(self.settings, environment)
         try:
-            self.sdk = docker.DockerClient(base_url=self.connection.endpoint, version="auto", timeout=self.settings.timeout_seconds)
-        except DockerException:
+            self.sdk = DirectDockerClient(base_url=self.connection.endpoint, version="auto", timeout=self.settings.timeout_seconds)
+        except (DockerException, RequestException):
             raise DockerOperationError("connect to Docker") from None
         self.containers = Containers(self.sdk)
         self.images = Images(self.sdk)
@@ -30,7 +31,7 @@ class Client:
     def ping(self) -> bool:
         try:
             return self.sdk.ping()
-        except DockerException:
+        except (DockerException, RequestException):
             raise DockerOperationError("check Docker readiness") from None
 
     def close(self) -> None:

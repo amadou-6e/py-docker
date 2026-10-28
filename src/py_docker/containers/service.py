@@ -3,6 +3,7 @@
 import uuid
 
 from docker.errors import DockerException, NotFound
+from requests.exceptions import RequestException
 
 from py_docker.containers.models import ContainerIdentity, ContainerSpec
 from py_docker.errors import DockerOperationError, OwnershipConflictError
@@ -24,7 +25,7 @@ class Containers:
             image = self.sdk.images.get(spec.image)
             container = self.sdk.containers.create(image.id, **options)
             return ContainerIdentity(id=container.id, name=spec.name, labels=labels)
-        except DockerException:
+        except (DockerException, RequestException):
             raise DockerOperationError("create container") from None
 
     def inspect(self, identity: ContainerIdentity):
@@ -32,7 +33,7 @@ class Containers:
             container = self.sdk.containers.get(identity.id)
         except NotFound:
             return None
-        except DockerException:
+        except (DockerException, RequestException):
             raise DockerOperationError("inspect container") from None
         attrs = container.attrs
         actual = attrs.get("Config", {}).get("Labels") or {}
@@ -46,7 +47,7 @@ class Containers:
             raise DockerOperationError("start missing container")
         try:
             container.start()
-        except DockerException:
+        except (DockerException, RequestException):
             raise DockerOperationError("start container") from None
 
     def remove(self, identity: ContainerIdentity, *, force: bool = False) -> None:
@@ -57,7 +58,7 @@ class Containers:
             container.remove(force=force)
         except NotFound:
             pass
-        except DockerException:
+        except (DockerException, RequestException):
             raise DockerOperationError("remove container") from None
         if self.inspect(identity) is not None:
             raise DockerOperationError("confirm container removal")
