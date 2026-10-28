@@ -80,3 +80,29 @@ def test_class_function_cohesion():
         classes = any(isinstance(node, ast.ClassDef) for node in tree.body)
         functions = any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) for node in tree.body)
         assert not (classes and functions), str(path)
+
+
+def test_remote_opt_in_cannot_come_from_ambient_environment(monkeypatch):
+    monkeypatch.setenv("PY_DOCKER_ALLOW_REMOTE", "true")
+    monkeypatch.setenv("PY_DOCKER_ENDPOINT", "tcp://remote:2375")
+    settings = ConnectionSettings.from_environment({})
+    assert settings.endpoint is None
+    with pytest.raises(ConnectionConfigurationError):
+        ConnectionResolver().resolve(ConnectionSettings(endpoint="tcp://remote:2375"), {})
+
+
+def test_create_disables_implicit_proxy_injection_and_retains_receipt_on_timeout():
+    from requests.exceptions import ReadTimeout
+    from py_docker.errors import CreationUnconfirmedError
+
+    sdk = Mock()
+    sdk.images.get.return_value.id = "sha256:" + "a" * 64
+    sdk.containers.create.side_effect = ReadTimeout("private-external-error")
+    service = Containers(sdk)
+    spec = ContainerSpec(image="local", name="owned")
+    reservation = service.reserve(spec)
+    with pytest.raises(CreationUnconfirmedError) as raised:
+        service.create(spec, reservation)
+    assert raised.value.receipt is reservation
+    assert sdk.containers.create.call_args.kwargs["use_config_proxy"] is False
+    assert "private-external-error" not in str(raised.value)

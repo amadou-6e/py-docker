@@ -30,6 +30,16 @@ class OutputLimitError(DockerOperationError):
 
 
 class DeadlineError(DockerOperationError):
-    """A total deadline expired; remote work may still be running."""
+    """A stream deadline expired; remote work may still be running."""
 
     code = "docker_deadline_exceeded"
+
+
+class CreationUnconfirmedError(DockerOperationError):
+    """Creation may have happened; receipt supports exact ownership reconciliation."""
+
+    code = "docker_creation_unconfirmed"
+
+    def __init__(self, operation: str, receipt):
+        self.receipt = receipt
+        super().__init__(operation)

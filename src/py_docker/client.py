@@ -1,5 +1,6 @@
 """Owned SDK client with explicit endpoint identity and reusable services."""
 
+import os
 from docker.errors import DockerException
 from requests.exceptions import RequestException
 
@@ -16,9 +17,10 @@ from py_docker.volumes.service import Volumes
 class Client:
     """Close with a context manager. SDK escape hatch retains all Engine APIs."""
 
-    def __init__(self, settings: ConnectionSettings | None = None, *, environment=None):
-        self.settings = settings or ConnectionSettings()
-        self.connection = ConnectionResolver().resolve(self.settings, environment)
+    def __init__(self, settings: ConnectionSettings | None = None, *, environment=None, allow_remote: bool = False):
+        snapshot = dict(os.environ if environment is None else environment)
+        self.settings = settings or ConnectionSettings.from_environment(snapshot)
+        self.connection = ConnectionResolver().resolve(self.settings, snapshot, allow_remote=allow_remote)
         try:
             self.sdk = DirectDockerClient(base_url=self.connection.endpoint, version="auto", timeout=self.settings.timeout_seconds)
         except (DockerException, RequestException):

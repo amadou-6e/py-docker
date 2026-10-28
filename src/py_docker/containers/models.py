@@ -34,3 +34,11 @@ class ContainerIdentity(BaseModel):
     id: str = Field(pattern=r"^[0-9a-f]{64}$")
     name: str = Field(min_length=1)
     labels: dict[str, SecretStr] = Field(min_length=1, repr=False, exclude=True)
+
+
+class ContainerReservation(BaseModel):
+    """Ownership intent retained before sending create, including unknown outcomes."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    name: str = Field(min_length=1)
+    labels: dict[str, SecretStr] = Field(min_length=1, repr=False, exclude=True)

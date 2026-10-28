@@ -46,3 +46,13 @@ def test_truncated_frame_is_not_eof():
         writer.shutdown(socket.SHUT_WR)
         with pytest.raises(DockerOperationError):
             stream.read_frame()
+
+
+def test_close_failure_does_not_hide_primary_error():
+    from unittest.mock import Mock
+
+    raw = Mock()
+    raw.close.side_effect = OSError("unsafe-close-detail")
+    with pytest.raises(OutputLimitError):
+        with AttachedStream(raw, StreamLimits(max_bytes=20, seconds=1)):
+            raise OutputLimitError("read stream")

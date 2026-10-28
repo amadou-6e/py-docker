@@ -5,7 +5,7 @@ import uuid
 from docker.errors import DockerException, NotFound
 from requests.exceptions import RequestException
 
-from py_docker.errors import DockerOperationError, OwnershipConflictError
+from py_docker.errors import CreationUnconfirmedError, DockerOperationError, OwnershipConflictError
 from py_docker.volumes.models import VolumeIdentity
 
 
@@ -19,14 +19,15 @@ class Volumes:
         token = uuid.uuid4().hex
         name = f"{prefix}-{token}"
         labels = {"py_docker.owner": token}
+        receipt = VolumeIdentity(name=name, labels=labels)
         try:
             volume = self.sdk.volumes.create(name=name, labels=labels)
             volume.reload()
             if volume.attrs.get("Labels") != labels:
                 raise OwnershipConflictError("verify created volume ownership")
-        except (DockerException, RequestException):
-            raise DockerOperationError("create volume") from None
-        return VolumeIdentity(name=name, labels=labels)
+        except (DockerException, RequestException, OwnershipConflictError):
+            raise CreationUnconfirmedError("create volume", receipt) from None
+        return receipt
 
     def inspect(self, identity: VolumeIdentity):
         try:

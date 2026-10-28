@@ -5,8 +5,8 @@ import uuid
 from docker.errors import DockerException, NotFound
 from requests.exceptions import RequestException
 
-from py_docker.containers.models import ContainerIdentity, ContainerSpec
-from py_docker.errors import DockerOperationError, OwnershipConflictError
+from py_docker.containers.models import ContainerIdentity, ContainerReservation, ContainerSpec
+from py_docker.errors import CreationUnconfirmedError, DockerOperationError, OwnershipConflictError
 
 
 class Containers:
@@ -15,18 +15,69 @@ class Containers:
     def __init__(self, sdk):
         self.sdk = sdk
 
-    def create(self, spec: ContainerSpec) -> ContainerIdentity:
+    def reserve(self, spec: ContainerSpec) -> ContainerReservation:
         labels = {key: value.get_secret_value() for key, value in spec.labels.items()}
         labels["py_docker.owner"] = uuid.uuid4().hex
+        return ContainerReservation(name=spec.name, labels=labels)
+
+    def reconcile(self, reservation: ContainerReservation) -> ContainerIdentity | None:
+        try:
+            container = self.sdk.containers.get(reservation.name)
+        except NotFound:
+            return None
+        except (DockerException, RequestException):
+            raise DockerOperationError("reconcile container creation") from None
+        identity = ContainerIdentity(id=container.id, name=reservation.name, labels=reservation.labels)
+        self.inspect(identity)
+        return identity
+
+    def create(self, spec: ContainerSpec, reservation: ContainerReservation | None = None) -> ContainerIdentity:
+        receipt = reservation or self.reserve(spec)
+        if receipt.name != spec.name:
+            raise OwnershipConflictError("match container reservation")
+        labels = {key: value.get_secret_value() for key, value in receipt.labels.items()}
         options = spec.model_dump(exclude={"image", "environment", "labels"})
         options["environment"] = {key: value.get_secret_value() for key, value in spec.environment.items()}
         options["labels"] = labels
+        options["use_config_proxy"] = False
         try:
             image = self.sdk.images.get(spec.image)
-            container = self.sdk.containers.create(image.id, **options)
-            return ContainerIdentity(id=container.id, name=spec.name, labels=labels)
         except (DockerException, RequestException):
-            raise DockerOperationError("create container") from None
+            raise DockerOperationError("resolve container image") from None
+        try:
+            container = self.sdk.containers.create(image.id, **options)
+            identity = ContainerIdentity(id=container.id, name=spec.name, labels=labels)
+            self.inspect(identity)
+            self._verify_launch(container, spec, image)
+            return identity
+        except (DockerException, RequestException, DockerOperationError):
+            raise CreationUnconfirmedError("create and verify container", receipt) from None
+
+    def _verify_launch(self, container, spec: ContainerSpec, image) -> None:
+        from docker.utils import convert_volume_binds, parse_bytes
+
+        host = container.attrs.get("HostConfig", {})
+        expected = {"NetworkMode": spec.network_mode, "ReadonlyRootfs": spec.read_only, "PidsLimit": spec.pids_limit, "Memory": parse_bytes(spec.mem_limit), "Tmpfs": spec.tmpfs}
+        actual = {key: host.get(key) for key in expected}
+        actual["Tmpfs"] = actual["Tmpfs"] or {}
+        if actual != expected:
+            raise OwnershipConflictError("verify container sandbox configuration")
+        for key, values in (("CapDrop", spec.cap_drop), ("CapAdd", spec.cap_add), ("SecurityOpt", spec.security_opt)):
+            if set(host.get(key) or []) != set(values):
+                raise OwnershipConflictError("verify container sandbox permissions")
+        if sorted(host.get("Binds") or []) != sorted(convert_volume_binds(spec.volumes)):
+            raise OwnershipConflictError("verify container bind mounts")
+        image_config = image.attrs.get("Config", {})
+        config = container.attrs.get("Config", {})
+        expected_env = dict(value.split("=", 1) for value in image_config.get("Env") or [])
+        expected_env.update({key: value.get_secret_value() for key, value in spec.environment.items()})
+        actual_env = dict(value.split("=", 1) for value in config.get("Env") or [])
+        if actual_env != expected_env:
+            raise OwnershipConflictError("verify explicit container environment")
+        for key, supplied in (("User", spec.user), ("WorkingDir", spec.working_dir), ("Entrypoint", spec.entrypoint), ("Cmd", spec.command)):
+            expected_value = image_config.get(key) if supplied is None else supplied
+            if config.get(key) != expected_value:
+                raise OwnershipConflictError("verify container process configuration")
 
     def inspect(self, identity: ContainerIdentity):
         try:
@@ -50,12 +101,12 @@ class Containers:
         except (DockerException, RequestException):
             raise DockerOperationError("start container") from None
 
-    def remove(self, identity: ContainerIdentity, *, force: bool = False) -> None:
+    def remove(self, identity: ContainerIdentity, *, force: bool = False, remove_anonymous_volumes: bool = False) -> None:
         container = self.inspect(identity)
         if container is None:
             return
         try:
-            container.remove(force=force)
+            container.remove(force=force, v=remove_anonymous_volumes)
         except NotFound:
             pass
         except (DockerException, RequestException):

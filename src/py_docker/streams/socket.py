@@ -87,15 +87,27 @@ class AttachedStream:
     def close(self) -> None:
         if not self._closed:
             self._closed = True
+            failures = []
             try:
-                self.raw.close()
-            finally:
                 response = getattr(self.raw, "_response", None)
                 if response is not None:
                     response.close()
+            except Exception as error:
+                failures.append(error)
+            finally:
+                try:
+                    self.raw.close()
+                except Exception as error:
+                    failures.append(error)
+            if failures:
+                raise DockerOperationError("close container stream") from None
 
     def __enter__(self):
         return self
 
     def __exit__(self, *_):
-        self.close()
+        try:
+            self.close()
+        except DockerOperationError:
+            if _[0] is None:
+                raise

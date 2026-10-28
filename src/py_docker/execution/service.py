@@ -1,5 +1,6 @@
 """Explicit attach/exec APIs. No retry if the execution outcome is uncertain."""
 
+import time
 from docker.errors import DockerException
 from requests.exceptions import RequestException
 
@@ -41,9 +42,11 @@ class Execution:
                     if frame is None:
                         break
                     (stdout if frame.channel == "stdout" else stderr).extend(frame.data)
-            state = self.sdk.api.exec_inspect(execution["Id"])
-            if state.get("Running") or not isinstance(state.get("ExitCode"), int):
-                raise DockerOperationError("confirm command exit")
+            while True:
+                state = self.sdk.api.exec_inspect(execution["Id"])
+                if not state.get("Running") and isinstance(state.get("ExitCode"), int):
+                    break
+                time.sleep(min(0.05, stream._remaining()))
             return CommandResult(exit_code=state["ExitCode"], stdout=bytes(stdout), stderr=bytes(stderr))
         except (DockerException, RequestException):
             raise DockerOperationError("execute container command") from None

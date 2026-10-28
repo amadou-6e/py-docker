@@ -8,6 +8,7 @@ import pytest
 from py_docker import Client
 from py_docker.containers.models import ContainerSpec
 from py_docker.streams.models import StreamLimits
+from py_docker.errors import DeadlineError, OutputLimitError
 
 
 @pytest.mark.integration
@@ -23,6 +24,10 @@ def test_real_binary_exec_and_exact_cleanup():
             assert result.exit_code == 0
             assert result.stdout == bytes([0, 255, 10])
             assert result.stderr == b"stderr"
+            with pytest.raises(DeadlineError):
+                client.execution.run(identity, ["python3", "-c", "import time;time.sleep(5)"], StreamLimits(max_bytes=1024, seconds=0.2))
+            with pytest.raises(OutputLimitError):
+                client.execution.run(identity, ["python3", "-c", "print('x'*4096)"], StreamLimits(max_bytes=8, seconds=2))
         finally:
             client.containers.remove(identity, force=True)
         assert client.containers.inspect(identity) is None

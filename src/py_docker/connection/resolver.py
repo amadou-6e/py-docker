@@ -2,8 +2,8 @@
 
 import json
 import os
-import shutil
 import subprocess
+from pathlib import Path
 from collections.abc import Mapping
 from urllib.parse import urlsplit
 
@@ -15,7 +15,7 @@ from py_docker.errors import ConnectionConfigurationError
 class ConnectionResolver:
     """Use explicit settings, DOCKER_CONTEXT, DOCKER_HOST, then active context."""
 
-    def resolve(self, settings: ConnectionSettings, environment: Mapping[str, str] | None = None) -> ResolvedConnection:
+    def resolve(self, settings: ConnectionSettings, environment: Mapping[str, str] | None = None, *, allow_remote: bool = False) -> ResolvedConnection:
         env = dict(os.environ if environment is None else environment)
         # TLS/SSH support requires a future explicit, tested contract. Never ignore it.
         if any(env.get(key) for key in ("DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH", "DOCKER_TLS")):
@@ -27,7 +27,7 @@ class ConnectionResolver:
             endpoint, source = self._context_endpoint(context, env), "context"
         elif env.get("DOCKER_HOST"):
             endpoint, source = env["DOCKER_HOST"], "environment"
-        elif shutil.which("docker", path=env.get("PATH")):
+        elif self._executable(env):
             endpoint, source = self._context_endpoint(None, env), "active-context"
         else:
             endpoint = "npipe:////./pipe/docker_engine" if os.name == "nt" else "unix:///var/run/docker.sock"
@@ -36,12 +36,15 @@ class ConnectionResolver:
         parsed = urlsplit(endpoint)
         if parsed.username is not None or parsed.password is not None or any(character.isspace() for character in endpoint):
             raise ConnectionConfigurationError("select credential-free Docker endpoint")
-        if not local and not (settings.allow_remote and endpoint.startswith("tcp://")):
+        if not local and not (allow_remote and endpoint.startswith("tcp://")):
             raise ConnectionConfigurationError("select supported Docker endpoint")
         return ResolvedConnection(endpoint=endpoint, source=source, local=local)
 
     def _context_endpoint(self, context: str | None, environment: dict[str, str]) -> str:
-        command = ["docker", "context", "inspect"]
+        executable = self._executable(environment)
+        if executable is None:
+            raise ConnectionConfigurationError("find Docker CLI for context selection")
+        command = [executable, "context", "inspect"]
         if context is not None:
             command.append(context)
         try:
@@ -55,3 +58,15 @@ class ConnectionResolver:
             return endpoint
         except (OSError, subprocess.SubprocessError, ValueError, KeyError, IndexError, TypeError):
             raise ConnectionConfigurationError("resolve Docker context") from None
+
+    def _executable(self, environment: Mapping[str, str]) -> str | None:
+        """Search explicit absolute PATH entries, never implicit Windows cwd."""
+        search = next((value for key, value in environment.items() if key.upper() == "PATH"), "")
+        for directory in search.split(os.pathsep):
+            parent = Path(directory.strip('"'))
+            if not directory or not parent.is_absolute():
+                continue
+            candidate = parent / ("docker.exe" if os.name == "nt" else "docker")
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
+        return None

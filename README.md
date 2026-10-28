@@ -24,10 +24,20 @@ replaces an existing named container. Removal validates ID, name and ownership
 labels. The SDK remains available as `client.sdk` for other Engine operations;
 operations through that escape hatch have the SDK's own contracts.
 
+For recoverable creation, call `reservation = client.containers.reserve(spec)`
+before `create(spec, reservation)`. A `CreationUnconfirmedError` also carries
+its private receipt. Reconcile that receipt before retrying; a timeout may mean
+Docker created the resource. Volume create errors likewise retain a receipt.
+Container creation disables Docker config proxy injection and reads back the
+requested sandbox, process configuration, bind mounts and environment.
+
 Connection selection: explicit endpoint, explicit context/DOCKER_CONTEXT,
 DOCKER_HOST, active CLI context, platform default if Docker CLI is absent.
-The selected endpoint is exposed as `client.connection`. Remote plain TCP is
-opt-in; TLS and SSH are currently rejected rather than silently ignored. Context
+The selected endpoint is exposed as `client.connection`. Remote plain TCP needs
+the explicit `Client(allow_remote=True)` argument; an environment variable cannot
+grant that permission. `Client(environment=snapshot)` isolates library settings
+from the ambient process environment. TLS and SSH are currently rejected rather
+than silently ignored. Context
 resolution uses read-only `docker context inspect`; container operations use
 the SDK. Credential copying is application policy and is not implemented here.
 
@@ -41,6 +51,11 @@ container, and there is no cross-platform stdin half-close guarantee. Fresh,
 unique volume creation verifies its ownership token; generic volume deletion is
 not exposed because volumes lack immutable IDs. Applications own credential
 selection, lease supervision and recovery UI.
+
+Container removal preserves anonymous volumes by default. Opt in to removing
+them with `remove_anonymous_volumes=True` for an exclusively owned container.
+Suppressed exception chains remain available in memory via Python's exception
+context; only safe library messages should be presented or logged.
 
 Pending before release: archive APIs, Unix-socket parity, end-to-end command
 deadline design, full independent review and packaging checks. The Python
