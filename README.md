@@ -36,9 +36,10 @@ Docker created the resource. Volume create errors likewise retain a receipt.
 
 `client.sessions.open(ContainerSession(spec=spec, limits=limits,
 receipt_path=private_state.joinpath("session.json")))` returns a creator-owned
-`Session`. Supply an immutable image ID, `stdin_open=True`, explicit stream
-limits and an existing private state directory. Creation attaches stdin and
-both output channels before starting the container. `write(bytes)` sends stdin;
+`Session`. Supply an immutable image ID, explicit stream limits and an existing
+private state directory. Set `stdin_open=True` only when the caller writes input;
+output-only services leave it false. Creation attaches both output channels and
+optional stdin before starting the container. `write(bytes)` sends stdin;
 `read_frame()` returns undecoded stdout/stderr frames. One reader and serialized
 writers share the original lifetime and combined byte budget.
 
@@ -61,6 +62,18 @@ another thread and removes only the verified immutable ID. It deliberately
 leaves the receipt for `close()` on the creator thread, which confirms removal,
 clears intent, detaches and releases its native lock. Keep the Client open for
 the entire session. Closing an attachment alone never establishes termination.
+
+`ContainerSpec` also supports an init process, a CPU quota in nanocpus, explicit
+host aliases and loopback-only published ports such as `ports={"4096/tcp": None}`.
+These options are checked against creation readback. After start,
+`client.containers.published_port(session.identity, "4096/tcp")` returns the
+observed host port only when the exact owned container has one IPv4 loopback
+binding. Wildcard and externally reachable bindings are refused.
+
+Windows named pipes cannot half-close stdin while retaining output. For commands
+that require EOF, callers can bind a private input file read-only and redirect
+stdin inside their explicit command. The library does not interpret input files
+or introduce a shell. Never put request contents or credentials in command args.
 
 After verified creation, jobs and sessions atomically record the observed
 immutable ID in their private receipt. Recovery can then safely accept that ID's

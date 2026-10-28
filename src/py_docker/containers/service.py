@@ -151,6 +151,7 @@ class Containers:
         options = spec.model_dump(exclude={"image", "environment", "labels"})
         options["volumes"] = spec.sdk_volumes()
         options["mounts"] = [mount.to_sdk() for mount in spec.mounts]
+        options["ports"] = spec.sdk_ports()
         options["environment"] = {
             key: value.get_secret_value() for key, value in spec.environment.items()
         }
@@ -367,6 +368,45 @@ class Containers:
                 raise DockerOperationError("confirm container exit status")
         return ContainerState(running=running, exit_code=code, removed=False)
 
+    def published_port(self, identity: ContainerIdentity, container_port: str) -> int:
+        """Return one confirmed loopback port of an owned, started container.
+
+        Parameters
+        ----------
+        identity : ContainerIdentity
+            Immutable ID and ownership labels authorizing inspection.
+        container_port : str
+            Exact port/protocol key requested at creation, such as 4096/tcp.
+
+        Returns
+        -------
+        int
+            Confirmed host port bound exclusively to 127.0.0.1.
+
+        Raises
+        ------
+        DockerOperationError
+            The resource, binding or loopback isolation cannot be confirmed.
+        """
+        container = self.inspect(identity)
+        if container is not None:
+            bindings = (
+                container.attrs.get("NetworkSettings", {})
+                .get("Ports", {})
+                .get(container_port)
+            )
+            if isinstance(bindings, list) and len(bindings) == 1:
+                binding = bindings[0]
+                port = binding.get("HostPort", "")
+                if (
+                    binding.get("HostIp") == "127.0.0.1"
+                    and isinstance(port, str)
+                    and port.isdecimal()
+                    and 1 <= int(port) <= 65535
+                ):
+                    return int(port)
+        raise DockerOperationError("confirm loopback published port")
+
     def _verify_launch(
         self, container: Container, spec: ContainerSpec, image: Image
     ) -> None:
@@ -396,6 +436,22 @@ class Containers:
         }
         actual = {key: host.get(key) for key in expected}
         actual["Tmpfs"] = actual["Tmpfs"] or {}
+        if (
+            bool(host.get("Init")) != spec.init
+            or (host.get("NanoCpus") or 0) != spec.nano_cpus
+        ):
+            raise OwnershipConflictError("verify container init and CPU quota")
+        if sorted(host.get("ExtraHosts") or []) != sorted(
+            f"{key}:{value}" for key, value in spec.extra_hosts.items()
+        ):
+            raise OwnershipConflictError("verify container host aliases")
+        bindings = host.get("PortBindings") or {}
+        if set(bindings) != set(spec.ports) or any(
+            bindings[port]
+            != [{"HostIp": "127.0.0.1", "HostPort": str(number) if number else ""}]
+            for port, number in spec.ports.items()
+        ):
+            raise OwnershipConflictError("verify loopback port bindings")
         if actual != expected:
             raise OwnershipConflictError("verify container sandbox configuration")
         for key, values in (

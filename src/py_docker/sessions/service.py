@@ -85,7 +85,9 @@ class Sessions:
                     raise
                 raise
             store.observe(reservation, identity)
-            stream = self._execution.attach(identity, request.limits, stdin=True)
+            stream = self._execution.attach(
+                identity, request.limits, stdin=request.spec.stdin_open
+            )
             self._containers.start(identity)
             return Session(self._containers, store, reservation, identity, stream)
         except Exception as failure:

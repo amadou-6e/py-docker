@@ -24,6 +24,42 @@ from py_docker.streams.models import StreamLimits
 
 
 @pytest.mark.integration
+def test_real_output_only_service_preserves_loopback_policy(tmp_path):
+    """Exercise the real output-only attachment and requested sandbox readback."""
+    from py_docker.sessions.models import ContainerSession
+    from py_docker.streams.models import StreamLimits
+
+    image = os.environ.get("PY_DOCKER_TEST_IMAGE")
+    if not image:
+        pytest.skip("Set PY_DOCKER_TEST_IMAGE to an existing Python image")
+    with Client() as client:
+        request = ContainerSession(
+            spec=ContainerSpec(
+                image=client.images.resolve(image),
+                name="py-docker-service-" + uuid.uuid4().hex,
+                entrypoint=["python3"],
+                command=["-u", "-c", "import time;print('ready');time.sleep(30)"],
+                init=True,
+                nano_cpus=1_000_000_000,
+                extra_hosts={"host.docker.internal": "host-gateway"},
+                network_mode="bridge",
+                ports={"4096/tcp": None},
+            ),
+            limits=StreamLimits(seconds=10, max_bytes=1024),
+            receipt_path=tmp_path.joinpath("service.json"),
+        )
+        with client.sessions.open(request) as session:
+            assert session.read_line().data == b"ready\n"
+            assert (
+                1
+                <= client.containers.published_port(session.identity, "4096/tcp")
+                <= 65535
+            )
+        assert client.containers.inspect(session.identity) is None
+        assert not request.receipt_path.exists()
+
+
+@pytest.mark.integration
 def test_real_receipt_survives_client_exit_and_external_removal(tmp_path):
     """Recover an observed ID after a real client exit and independent removal."""
     if not os.environ.get("PY_DOCKER_TEST_IMAGE"):

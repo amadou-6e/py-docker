@@ -31,7 +31,11 @@ class Volumes:
         self.sdk = sdk
 
     def create(
-        self, prefix: str = DEFAULT_VOLUME_PREFIX, *, name: str | None = None
+        self,
+        prefix: str = DEFAULT_VOLUME_PREFIX,
+        *,
+        name: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> VolumeIdentity:
         """Create a unique volume and verify its private ownership label.
 
@@ -43,6 +47,8 @@ class Volumes:
             Explicit reserved name when persistent application profiles require
             stable naming. Existing volumes are never adopted: generated owner
             labels must match readback, including a racing existing name.
+        labels : dict[str, str] or None
+            Application labels, augmented with the generated private owner token.
 
         Returns
         -------
@@ -56,7 +62,7 @@ class Volumes:
         """
         token = uuid.uuid4().hex
         name = name if name is not None else f"{prefix}-{token}"
-        labels = {OWNERSHIP_LABEL: token}
+        labels = {**(labels or {}), OWNERSHIP_LABEL: token}
         receipt = VolumeIdentity(name=name, labels=labels)
         try:
             volume = self.sdk.volumes.create(name=name, labels=labels)
@@ -100,6 +106,32 @@ class Volumes:
         ):
             raise OwnershipConflictError("verify volume ownership")
         return volume
+
+    def has_labels(self, name: str, labels: dict[str, str]) -> bool:
+        """Check explicit legacy application labels without granting mutation rights.
+
+        Parameters
+        ----------
+        name : str
+            Host-selected volume name.
+        labels : dict[str, str]
+            Nonempty application labels that must match the observed volume.
+
+        Returns
+        -------
+        bool
+            False for confirmed absence or label mismatch; daemon failures raise.
+        """
+        if not labels:
+            raise DockerOperationError("verify nonempty volume labels")
+        try:
+            volume = self.sdk.volumes.get(name)
+        except NotFound:
+            return False
+        except (DockerException, RequestException):
+            raise DockerOperationError("verify selected volume labels") from None
+        actual = volume.attrs.get("Labels") or {}
+        return all(actual.get(key) == value for key, value in labels.items())
 
     def exists(self, name: str) -> bool:
         """Check an explicitly selected name without adopting or mutating it.

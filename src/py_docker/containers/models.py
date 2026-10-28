@@ -2,9 +2,9 @@
 
 from collections.abc import Mapping
 from pathlib import PureWindowsPath
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from py_docker.containers import settings
 
@@ -200,6 +200,46 @@ class ContainerSpec(BaseModel):
         default=False,
         description="Whether Docker keeps stdin open for interactive attachment.",
     )
+    init: bool = Field(
+        default=False,
+        description="Whether Docker supplies an init process to reap children.",
+    )
+    nano_cpus: int = Field(
+        default=0,
+        ge=0,
+        strict=True,
+        description="CPU quota in billionths of a CPU; zero retains Docker's unlimited default.",
+    )
+    extra_hosts: dict[str, str] = Field(
+        default_factory=dict,
+        description="Explicit container host aliases, including Docker host-gateway.",
+    )
+    ports: dict[str, Annotated[int, Field(strict=True, ge=1, le=65535)] | None] = Field(
+        default_factory=dict,
+        description="Container ports such as 4096/tcp published only on IPv4 loopback; None requests an ephemeral host port.",
+    )
+
+    @field_validator("ports")
+    @classmethod
+    def validate_ports(cls, value: dict[str, int | None]) -> dict[str, int | None]:
+        """Reject ambiguous port keys before any resource is created."""
+        for key in value:
+            port, separator, protocol = key.partition("/")
+            if (
+                not separator
+                or protocol not in {"tcp", "udp"}
+                or not port.isascii()
+                or not port.isdecimal()
+                or not 1 <= int(port) <= 65535
+            ):
+                raise ValueError(
+                    "Published ports require an explicit port/protocol key"
+                )
+        return value
+
+    def sdk_ports(self) -> dict[str, tuple[str, int | None]]:
+        """Return Docker bindings restricted to the local IPv4 loopback interface."""
+        return {port: ("127.0.0.1", host) for port, host in self.ports.items()}
 
     def sdk_volumes(self) -> dict[str, dict[str, str]]:
         """Project canonical bind models for creation and read-back verification.

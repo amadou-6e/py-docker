@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+import sysconfig
 import time
 from pathlib import Path
 from unittest.mock import MagicMock, Mock
@@ -166,6 +167,7 @@ def test_native_receipt_lock_survives_contention_and_releases_after_process_loss
 import os,site,sys,time
 sys.path.insert(0,sys.argv[3])
 site.addsitedir(sys.argv[3])
+site.addsitedir(sys.argv[4])
 from pathlib import Path
 from py_docker.containers.models import ContainerReservation
 from py_docker.containers.receipts import ReceiptStore
@@ -182,6 +184,7 @@ with ReceiptStore(Path(sys.argv[1])) as store:
             str(job.receipt_path),
             str(ready),
             str(Path(py_docker.__file__).resolve().parent.parent),
+            sysconfig.get_path("purelib"),
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.PIPE,
