@@ -1,1 +1,3 @@
 recursive-include test_suite *.py
+recursive-include docs *.md
+include AGENTS.md

@@ -2,10 +2,12 @@
 
 from unittest.mock import patch
 
+import pytest
 from docker.utils import convert_volume_binds
 
 from py_docker import Client
 from py_docker.containers.models import BindMount, ContainerSpec
+from py_docker.streams.models import StreamBudget, StreamLimits
 
 
 def test_bind_mount_projection_preserves_windows_paths_and_docker_modes():
@@ -36,3 +38,12 @@ def test_client_ignores_ambient_library_settings_when_snapshot_supplied(monkeypa
             assert sdk.call_args.kwargs["base_url"].startswith(
                 ("unix:///", "npipe:////./pipe/")
             )
+
+
+def test_stream_budget_cannot_gain_bytes_from_invalid_consumption():
+    """Reject invalid state transitions without increasing the private allowance."""
+    budget = StreamBudget.from_limits(StreamLimits(max_bytes=5, seconds=1), now=100)
+    with pytest.raises(ValueError):
+        budget.consume(-1)
+    assert budget.remaining_bytes == 5
+    assert budget.model_dump() == {}

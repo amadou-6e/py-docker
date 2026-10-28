@@ -46,6 +46,7 @@ class StreamBudget(BaseModel):
         description="Private absolute monotonic-clock deadline in seconds.",
     )
     remaining_bytes: int = Field(
+        ge=0,
         exclude=True,
         repr=False,
         description="Private remaining stdout/stderr payload allowance in bytes.",
@@ -102,9 +103,13 @@ class StreamBudget(BaseModel):
 
         Raises
         ------
+        ValueError
+            A negative byte count is invalid and cannot increase the allowance.
         OutputLimitError
             The frame exceeds the remaining allowance; no payload is read.
         """
+        if size < 0:
+            raise ValueError("Payload byte count must be unsigned")
         if size > self.remaining_bytes:
             raise OutputLimitError("read container stream")
         self.remaining_bytes -= size
