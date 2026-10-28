@@ -1,6 +1,7 @@
 """Typed container policy and exact resource identities."""
 
 from collections.abc import Mapping
+from pathlib import PureWindowsPath
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
@@ -40,6 +41,35 @@ class Mount(BaseModel):
             "Type": self.type,
             "ReadOnly": self.read_only,
         }
+
+    def matches_readback(
+        self, record: Mapping[str, object], *, local_npipe: bool
+    ) -> bool:
+        """Compare exact mount policy with narrowly recognized daemon normalization.
+
+        Parameters
+        ----------
+        record : Mapping[str, object]
+            HostConfig.Mounts entry returned for the exact owned container.
+        local_npipe : bool
+            Whether this client uses the local Windows named-pipe adapter.
+
+        Returns
+        -------
+        bool
+            True only for exact fields, omitted false ReadOnly, and the known
+            Docker Desktop Linux-host translation of this same Windows source.
+        """
+        actual = dict(record)
+        actual.setdefault("ReadOnly", False)
+        if local_npipe and self.type == "bind":
+            path = PureWindowsPath(self.source)
+            if path.is_absolute() and len(path.drive) == 2 and path.drive[1] == ":":
+                translated = settings.DESKTOP_BIND_ROOT + "/" + path.drive[0].lower()
+                translated += "/" + "/".join(path.parts[1:])
+                if actual.get("Source") == translated:
+                    actual["Source"] = self.source
+        return actual == self.to_sdk()
 
 
 class BindMount(BaseModel):

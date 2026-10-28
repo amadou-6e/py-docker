@@ -121,7 +121,13 @@ class Containers:
         if receipt.name != spec.name:
             raise OwnershipConflictError("match container reservation")
         for mount in spec.mounts:
-            if mount.type == "bind" and not Path(mount.source).exists():
+            try:
+                missing = mount.type == "bind" and not Path(mount.source).exists()
+            except (OSError, ValueError):
+                raise DockerOperationError(
+                    "verify local bind mount source exists"
+                ) from None
+            if missing:
                 raise DockerOperationError("verify local bind mount source exists")
         labels = {
             key: value.get_secret_value() for key, value in receipt.labels.items()
@@ -387,9 +393,13 @@ class Containers:
             convert_volume_binds(spec.sdk_volumes())
         ):
             raise OwnershipConflictError("verify container bind mounts")
-        expected_mounts = [mount.to_sdk() for mount in spec.mounts]
         actual_mounts = host.get("Mounts") or []
-        if actual_mounts != expected_mounts:
+        if len(actual_mounts) != len(spec.mounts) or not all(
+            mount.matches_readback(
+                actual, local_npipe=self.sdk.api.base_url == "http+docker://localnpipe"
+            )
+            for mount, actual in zip(spec.mounts, actual_mounts)
+        ):
             raise OwnershipConflictError("verify explicit container mounts")
         image_config = image.attrs.get("Config", {})
         config = container.attrs.get("Config", {})

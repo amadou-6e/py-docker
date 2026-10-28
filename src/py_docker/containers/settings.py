@@ -10,3 +10,4 @@ DEFAULT_PIDS_LIMIT = 128
 # Docker's create contract: bad parameter, missing image or name conflict.
 # Timeouts, throttling, server errors and undocumented responses stay uncertain.
 DEFINITIVE_CREATE_REJECTIONS = frozenset({400, 404, 409})
+DESKTOP_BIND_ROOT = "/run/desktop/mnt/host"

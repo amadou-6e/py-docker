@@ -11,6 +11,7 @@ from py_docker.containers.models import (
     ContainerReceipt,
     ContainerReservation,
     ContainerSpec,
+    Mount,
 )
 from py_docker.containers.receipts import ReceiptStore
 from py_docker.errors import DockerOperationError
@@ -93,4 +94,33 @@ def test_observed_id_cannot_be_rebound(tmp_path):
     assert (
         ContainerReceipt.from_private_record(json.loads(path.read_text())).observed_id
         == "a" * 64
+    )
+
+
+def test_desktop_mount_normalization_is_endpoint_and_identity_specific():
+    """Accept the observed local translation without weakening mount restrictions."""
+    mount = Mount(
+        type="bind", source=r"C:\private\source", target="/source", read_only=True
+    )
+    actual = {
+        "Type": "bind",
+        "Source": "/run/desktop/mnt/host/c/private/source",
+        "Target": "/source",
+        "ReadOnly": True,
+    }
+    assert mount.matches_readback(actual, local_npipe=True)
+    assert not mount.matches_readback(actual, local_npipe=False)
+    for changes in (
+        {"ReadOnly": False},
+        {"Target": "/other"},
+        {"Source": "/run/desktop/mnt/host/c/private/other"},
+        {"Type": "volume"},
+        {"BindOptions": {"Propagation": "shared"}},
+    ):
+        assert not mount.matches_readback(dict(actual, **changes), local_npipe=True)
+    writable = Mount(type="bind", source="/existing", target="/source")
+    omitted_false = {"Type": "bind", "Source": "/existing", "Target": "/source"}
+    assert writable.matches_readback(omitted_false, local_npipe=False)
+    assert not writable.matches_readback(
+        dict(omitted_false, ReadOnly=None), local_npipe=False
     )
