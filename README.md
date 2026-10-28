@@ -90,6 +90,8 @@ not wait for the command's own deadline or undo earlier effects. The creator
 thread confirms cleanup through the same Session lifecycle. A confirmed stop
 raises `JobCancelledError`; uncertain cleanup retains the receipt and takes
 precedence as `CleanupUnconfirmedError`. Pre-cancelled jobs send no launch.
+A stop racing process completion wins if it is observed before `run` returns;
+this conservative outcome never means that earlier effects were undone.
 
 After verified creation, jobs and sessions atomically record the observed
 immutable ID in their private receipt. Recovery can then safely accept that ID's
