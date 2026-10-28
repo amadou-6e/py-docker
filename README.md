@@ -60,7 +60,9 @@ them with `remove_anonymous_volumes=True` for an exclusively owned container.
 Suppressed exception chains remain available in memory via Python's exception
 context; only safe library messages should be presented or logged.
 
-Pending before release: archive APIs, Unix-socket parity, end-to-end command
-deadline design, full independent review and packaging checks. The Python
+Archive helpers and an end-to-end command deadline are outside this first
+prerelease: use SDK APIs with their own contracts until dedicated wrappers are
+reviewed. Library stream and cleanup tests do not establish agent acceptance.
+The Python
 import `py_docker` does not shadow the official SDK's `docker` import. A missing
 PyPI project page does not guarantee name registration.

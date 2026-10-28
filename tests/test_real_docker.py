@@ -2,6 +2,7 @@
 
 import os
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -9,6 +10,7 @@ from py_docker import Client
 from py_docker.containers.models import ContainerSpec
 from py_docker.streams.models import StreamLimits
 from py_docker.errors import DeadlineError, OutputLimitError
+from py_docker.errors import CreationUnconfirmedError, OwnershipConflictError
 
 
 @pytest.mark.integration
@@ -31,3 +33,42 @@ def test_real_binary_exec_and_exact_cleanup():
         finally:
             client.containers.remove(identity, force=True)
         assert client.containers.inspect(identity) is None
+
+
+@pytest.mark.integration
+def test_real_custom_entrypoint_bind_and_receipt_recovery(monkeypatch, tmp_path):
+    image = os.environ.get("PY_DOCKER_TEST_IMAGE")
+    if not image:
+        pytest.skip("Set PY_DOCKER_TEST_IMAGE to a local image containing python3")
+    (tmp_path / "message.txt").write_text("real-bind-ok", encoding="utf-8")
+    with Client() as client:
+        spec = ContainerSpec(image=image, name="py-docker-test-" + uuid.uuid4().hex, entrypoint=["python3", "-c", "print('custom-entrypoint-ok')"], volumes={str(tmp_path): {"bind": "/input", "mode": "ro"}})
+        reservation = client.containers.reserve(spec)
+        identity = None
+        try:
+            identity = client.containers.create(spec, reservation)
+            client.containers.start(identity)
+            container = client.containers.inspect(identity)
+            assert container.wait(timeout=10)["StatusCode"] == 0
+            assert b"custom-entrypoint-ok" in container.logs()
+        finally:
+            identity = identity or client.containers.reconcile(reservation)
+            if identity is not None:
+                client.containers.remove(identity, force=True)
+        reservation = client.containers.reserve(spec)
+        try:
+            with monkeypatch.context() as scoped:
+                # Internal fault injection at readback; the Docker resource is real.
+                # This verifies recovery only, not a live daemon misconfiguration.
+                def reject_readback(*_):
+                    raise OwnershipConflictError("injected verification failure")
+                scoped.setattr(client.containers, "_verify_launch", reject_readback)
+                with pytest.raises(CreationUnconfirmedError) as raised:
+                    client.containers.create(spec, reservation)
+            assert raised.value.receipt is reservation
+            assert client.containers.reconcile(reservation) is not None
+        finally:
+            recovered = client.containers.reconcile(reservation)
+            if recovered is not None:
+                client.containers.remove(recovered, force=True)
+        assert client.containers.reconcile(reservation) is None

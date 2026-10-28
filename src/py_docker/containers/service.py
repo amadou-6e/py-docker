@@ -28,8 +28,7 @@ class Containers:
         except (DockerException, RequestException):
             raise DockerOperationError("reconcile container creation") from None
         identity = ContainerIdentity(id=container.id, name=reservation.name, labels=reservation.labels)
-        self.inspect(identity)
-        return identity
+        return identity if self.inspect(identity) is not None else None
 
     def create(self, spec: ContainerSpec, reservation: ContainerReservation | None = None) -> ContainerIdentity:
         receipt = reservation or self.reserve(spec)
@@ -47,10 +46,12 @@ class Containers:
         try:
             container = self.sdk.containers.create(image.id, **options)
             identity = ContainerIdentity(id=container.id, name=spec.name, labels=labels)
-            self.inspect(identity)
-            self._verify_launch(container, spec, image)
+            owned = self.inspect(identity)
+            if owned is None:
+                raise DockerOperationError("confirm newly created container exists")
+            self._verify_launch(owned, spec, image)
             return identity
-        except (DockerException, RequestException, DockerOperationError):
+        except Exception:
             raise CreationUnconfirmedError("create and verify container", receipt) from None
 
     def _verify_launch(self, container, spec: ContainerSpec, image) -> None:
@@ -69,14 +70,21 @@ class Containers:
             raise OwnershipConflictError("verify container bind mounts")
         image_config = image.attrs.get("Config", {})
         config = container.attrs.get("Config", {})
-        expected_env = dict(value.split("=", 1) for value in image_config.get("Env") or [])
+        expected_env = {value.partition("=")[0]: value.partition("=")[2] for value in image_config.get("Env") or []}
         expected_env.update({key: value.get_secret_value() for key, value in spec.environment.items()})
-        actual_env = dict(value.split("=", 1) for value in config.get("Env") or [])
+        actual_env = {value.partition("=")[0]: value.partition("=")[2] for value in config.get("Env") or []}
         if actual_env != expected_env:
             raise OwnershipConflictError("verify explicit container environment")
         for key, supplied in (("User", spec.user), ("WorkingDir", spec.working_dir), ("Entrypoint", spec.entrypoint), ("Cmd", spec.command)):
             expected_value = image_config.get(key) if supplied is None else supplied
-            if config.get(key) != expected_value:
+            if key == "Cmd" and spec.command is None and spec.entrypoint:
+                expected_value = None
+            if key in {"Cmd", "Entrypoint"}:
+                expected_value = expected_value or None
+                actual_value = config.get(key) or None
+            else:
+                actual_value = config.get(key)
+            if actual_value != expected_value:
                 raise OwnershipConflictError("verify container process configuration")
 
     def inspect(self, identity: ContainerIdentity):
