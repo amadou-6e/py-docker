@@ -60,7 +60,7 @@ class ReceiptStore:
             self._lock.acquire(timeout=0)
         except Timeout:
             raise ReceiptInUseError("acquire container receipt") from None
-        except OSError:
+        except (OSError, NotImplementedError):
             raise DockerOperationError("lock private container receipt") from None
         return self
 
@@ -72,7 +72,13 @@ class ReceiptStore:
         _ : tuple
             Context exception information; receipt cleanup is handled explicitly.
         """
-        self._lock.release()
+        try:
+            self._lock.release()
+        except OSError:
+            if _[0] is None:
+                raise DockerOperationError(
+                    "release private container receipt"
+                ) from None
 
     def recover(self, containers: Containers) -> None:
         """Remove only a retained, observed owned container before clearing its receipt.

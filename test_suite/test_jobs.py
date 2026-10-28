@@ -1,6 +1,9 @@
 """Internal job/recovery controls; real Docker coverage lives in integration tests."""
 
 import os
+import subprocess
+import sys
+import time
 from unittest.mock import MagicMock, Mock
 
 import pytest
@@ -146,6 +149,52 @@ def test_live_receipt_lock_blocks_other_callers_without_docker_access(tmp_path):
         with pytest.raises(ReceiptInUseError):
             jobs.recover(job.receipt_path)
     assert not containers.mock_calls
+
+
+def test_native_receipt_lock_survives_contention_and_releases_after_process_loss(
+    tmp_path,
+):
+    """Use a real child process to prove exclusion and kernel cleanup on process loss."""
+    jobs, containers, _ = _runtime()
+    job = _job(tmp_path)
+    ready = tmp_path.joinpath("ready")
+    code = """
+import sys,time
+from pathlib import Path
+from py_docker.containers.models import ContainerReservation
+from py_docker.containers.receipts import ReceiptStore
+with ReceiptStore(Path(sys.argv[1])) as store:
+    store.save(ContainerReservation(name='owned-job',labels={'owner':'private-owner'}))
+    Path(sys.argv[2]).write_text('ready')
+    time.sleep(30)
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", code, str(job.receipt_path), str(ready)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while (
+            not ready.exists()
+            and process.poll() is None
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.02)
+        assert ready.exists(), "Child receipt owner did not become ready"
+        with pytest.raises(ReceiptInUseError):
+            jobs.recover(job.receipt_path)
+        assert not containers.mock_calls
+        process.kill()
+        process.wait(timeout=5)
+        jobs.recover(job.receipt_path)
+        containers.remove.assert_called_once()
+        assert not job.receipt_path.exists()
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+        process.stderr.close()
 
 
 def test_recovery_of_observed_container_removes_exact_id_and_receipt(tmp_path):
