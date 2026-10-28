@@ -84,6 +84,13 @@ that require EOF, callers can bind a private input file read-only and redirect
 stdin inside their explicit command. The library does not interpret input files
 or introduce a shell. Never put request contents or credentials in command args.
 
+`client.jobs.run(job, cancelled=stop_event)` optionally accepts a caller-owned
+`threading.Event`. Setting it stops the job's observed owned container; it does
+not wait for the command's own deadline or undo earlier effects. The creator
+thread confirms cleanup through the same Session lifecycle. A confirmed stop
+raises `JobCancelledError`; uncertain cleanup retains the receipt and takes
+precedence as `CleanupUnconfirmedError`. Pre-cancelled jobs send no launch.
+
 After verified creation, jobs and sessions atomically record the observed
 immutable ID in their private receipt. Recovery can then safely accept that ID's
 confirmed absence, including removal by an independent application supervisor.

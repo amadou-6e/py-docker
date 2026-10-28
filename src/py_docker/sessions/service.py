@@ -82,9 +82,11 @@ class Sessions:
             except CreationUnconfirmedError:
                 raise
             except DockerOperationError as error:
+                # This typed failure proves no create occurred. If discarding
+                # intent fails, retain it without reconciling an unrelated ID.
+                pending = False
                 try:
                     store.discard_unstarted(reservation)
-                    pending = False
                 except CleanupUnconfirmedError as failure:
                     failure.primary = error
                     raise

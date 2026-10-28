@@ -52,6 +52,17 @@ class DeadlineError(DockerOperationError):
     code = "docker_deadline_exceeded"
 
 
+class JobCancelledError(DockerOperationError):
+    """The caller cancelled a job; successful cleanup is required before it escapes.
+
+    Cleanup uncertainty takes precedence as CleanupUnconfirmedError, retaining
+    this safe cancellation as its primary failure. Cancellation never reports a
+    process exit code or implies that earlier workspace effects were undone.
+    """
+
+    code = "docker_job_cancelled"
+
+
 class CreationUnconfirmedError(DockerOperationError):
     """Creation may have happened; receipt supports exact ownership reconciliation.
 

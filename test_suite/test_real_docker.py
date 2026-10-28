@@ -15,12 +15,79 @@ from py_docker.containers.models import ContainerReceipt, ContainerSpec, Mount
 from py_docker.errors import (
     CreationUnconfirmedError,
     DeadlineError,
+    JobCancelledError,
     OutputLimitError,
     OwnershipConflictError,
 )
 from py_docker.jobs.models import ContainerJob
 from py_docker.sessions.models import ContainerSession
 from py_docker.streams.models import StreamLimits
+
+
+@pytest.mark.integration
+def test_real_job_cancellation_stops_an_observed_running_container(tmp_path):
+    """Cancel real running work without waiting for its in-container deadline."""
+    import time
+
+    image = os.environ.get("PY_DOCKER_TEST_IMAGE")
+    if not image:
+        pytest.skip("Set PY_DOCKER_TEST_IMAGE to an existing Python image")
+    cancelled = threading.Event()
+    observed = {}
+    receipt = tmp_path.joinpath("cancel-job.json")
+    with Client() as client:
+
+        def request_stop():
+            """Set the caller signal only after actual daemon running state."""
+            with Client(
+                environment={"DOCKER_HOST": client.connection.endpoint}
+            ) as monitor:
+                deadline = time.monotonic() + 30
+                while time.monotonic() < deadline:
+                    try:
+                        saved = ContainerReceipt.from_private_record(
+                            json.loads(receipt.read_text(encoding="utf-8"))
+                        )
+                        if (
+                            saved.identity is not None
+                            and monitor.containers.state(saved.identity).running
+                        ):
+                            observed.update(
+                                identity=saved.identity, stopped_at=time.monotonic()
+                            )
+                            cancelled.set()
+                            return
+                    except (OSError, ValueError):
+                        pass
+                    time.sleep(0.02)
+                cancelled.set()
+
+        watcher = threading.Thread(target=request_stop)
+        watcher.start()
+        try:
+            with pytest.raises(JobCancelledError):
+                client.jobs.run(
+                    ContainerJob(
+                        spec=ContainerSpec(
+                            image=client.images.resolve(image),
+                            name="py-docker-cancel-job-" + uuid.uuid4().hex,
+                            entrypoint=["python3"],
+                            command=["-c", "import time;time.sleep(60)"],
+                        ),
+                        limits=StreamLimits(seconds=35, max_bytes=1024),
+                        receipt_path=receipt,
+                        wait_timeout_seconds=5.0,
+                    ),
+                    cancelled=cancelled,
+                )
+            assert observed
+            assert time.monotonic() - observed["stopped_at"] < 10
+            assert client.containers.inspect(observed["identity"]) is None
+            assert not receipt.exists()
+        finally:
+            watcher.join(35)
+            if receipt.exists():
+                client.sessions.recover(receipt)
 
 
 @pytest.mark.integration

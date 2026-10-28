@@ -74,7 +74,7 @@ def _runtime():
     containers.create.return_value = identity
     containers.reconcile.return_value = identity
     containers.wait.return_value = 7
-    execution.attach.return_value.__enter__.return_value.read_frame.side_effect = [
+    execution.attach.return_value.read_frame.side_effect = [
         Frame(channel="stdout", data=b"\x00out"),
         Frame(channel="stderr", data=b"\xfferr"),
         None,
@@ -268,9 +268,7 @@ def test_cleanup_error_retains_safe_primary_and_creation_receipt(tmp_path):
     jobs, containers, execution = _runtime()
     job = _job(tmp_path)
     original = DeadlineError("read container stream")
-    execution.attach.return_value.__enter__.return_value.read_frame.side_effect = (
-        original
-    )
+    execution.attach.return_value.read_frame.side_effect = original
     containers.remove.side_effect = DockerOperationError("remove owned container")
     with pytest.raises(CleanupUnconfirmedError) as captured:
         jobs.run(job)
