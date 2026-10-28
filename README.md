@@ -199,6 +199,9 @@ native inter-process exclusion; there is no custom platform lock implementation.
 ## Connection and lifecycle boundaries
 Operation phase text is diagnostic wording, not a stable API; use exception
 types and their machine `code` for programmatic handling.
+`Images.resolve` raises `ImageResolutionError` when local inspection fails,
+without claiming that the image is missing. An observed pin mismatch remains
+`OwnershipConflictError`. Neither operation pulls or launches a container.
 Container creation disables Docker config proxy injection and reads back the
 requested sandbox, process configuration, bind mounts and environment.
 

@@ -40,6 +40,16 @@ class OwnershipConflictError(DockerOperationError):
     code = "docker_resource_ownership_conflict"
 
 
+class ImageResolutionError(DockerOperationError):
+    """A local image could not be inspected; no pull or launch was attempted.
+
+    The cause may be absence, daemon availability or access. This type does not
+    establish which cause applies and never contains the external diagnostic.
+    """
+
+    code = "docker_image_resolution_failed"
+
+
 class OutputLimitError(DockerOperationError):
     """A read exceeded its limit; remote work may still be running."""
 
