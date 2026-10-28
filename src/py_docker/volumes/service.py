@@ -101,5 +101,31 @@ class Volumes:
             raise OwnershipConflictError("verify volume ownership")
         return volume
 
+    def exists(self, name: str) -> bool:
+        """Check an explicitly selected name without adopting or mutating it.
+
+        Parameters
+        ----------
+        name : str
+            Host-selected existing volume name; existence grants no ownership.
+
+        Returns
+        -------
+        bool
+            False only for Docker NotFound; other outcomes stay uncertain.
+
+        Raises
+        ------
+        DockerOperationError
+            The selected daemon could not confirm volume existence.
+        """
+        try:
+            self.sdk.volumes.get(name)
+            return True
+        except NotFound:
+            return False
+        except (DockerException, RequestException):
+            raise DockerOperationError("check selected volume exists") from None
+
     # Deliberately no generic remove-by-name: unlike containers, Docker volumes
     # have no immutable ID for race-safe deletion. Caller must serialize lifecycle.
