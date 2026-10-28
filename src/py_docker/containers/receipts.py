@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 from filelock import FileLock, SoftFileLock, Timeout
 
-from py_docker.containers.models import ContainerIdentity, ContainerReservation
+from py_docker.containers.models import (
+    ContainerIdentity,
+    ContainerReceipt,
+    ContainerReservation,
+)
 from py_docker.containers.service import Containers
 from py_docker.errors import (
     CleanupUnconfirmedError,
@@ -103,10 +108,63 @@ class ReceiptStore:
             return
         try:
             value = json.loads(self._path.read_text(encoding="utf-8"))
-            receipt = ContainerReservation.from_private_record(value)
+            receipt = ContainerReceipt.from_private_record(value)
         except (OSError, ValueError, TypeError):
             raise CleanupUnconfirmedError("read private container receipt") from None
-        self.cleanup(containers, receipt)
+        self.cleanup(containers, receipt.reservation, receipt.identity)
+
+    def observe(
+        self, reservation: ContainerReservation, identity: ContainerIdentity
+    ) -> None:
+        """Atomically bind a saved intent to the verified immutable container ID.
+
+        Parameters
+        ----------
+        reservation : ContainerReservation
+            Exact intent saved by this lifecycle owner before create.
+        identity : ContainerIdentity
+            ID and matching name/labels returned by verified creation.
+
+        Raises
+        ------
+        CleanupUnconfirmedError
+            Persisting the observation failed; the old intent is preserved.
+        """
+        self._require_lock()
+        temporary = None
+        try:
+            stored = ContainerReceipt.from_private_record(
+                json.loads(self._path.read_text(encoding="utf-8"))
+            )
+            if (
+                stored.reservation != reservation
+                or identity.name != reservation.name
+                or identity.labels != reservation.labels
+            ):
+                raise ValueError("Receipt identity changed")
+            if stored.observed_id not in (None, identity.id):
+                raise ValueError("Observed ID changed")
+            descriptor, name = tempfile.mkstemp(
+                prefix=".container-receipt-", dir=self._path.parent
+            )
+            temporary = Path(name)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as target:
+                json.dump(
+                    ContainerReceipt(
+                        reservation=reservation, observed_id=identity.id
+                    ).to_private_record(),
+                    target,
+                )
+                target.flush()
+                os.fsync(target.fileno())
+            os.replace(temporary, self._path)
+        except Exception:
+            raise CleanupUnconfirmedError(
+                "record observed container identity", reservation
+            ) from None
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
 
     def save(self, reservation: ContainerReservation) -> None:
         """Flush ownership intent to an exclusive private file before a create request.

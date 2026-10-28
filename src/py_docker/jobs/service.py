@@ -103,6 +103,7 @@ class Jobs:
                         cleanup.primary = error
                         raise
                     raise
+                store.observe(receipt, identity)
                 stdout, stderr = bytearray(), bytearray()
                 with self._execution.attach(identity, job.limits) as stream:
                     self._containers.start(identity)

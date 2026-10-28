@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "py-docker"
-version = "0.1.0a2"
+version = "0.1.0a3"
 description = "Explicit Docker container lifecycle and bounded execution for Python"
 readme = "README.md"
 requires-python = ">=3.10"

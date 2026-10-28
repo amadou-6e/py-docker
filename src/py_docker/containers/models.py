@@ -1,10 +1,45 @@
 """Typed container policy and exact resource identities."""
 
 from collections.abc import Mapping
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from py_docker.containers import settings
+
+
+class Mount(BaseModel):
+    """Explicit mounts preserve Docker --mount missing-source semantics."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    source: str = Field(
+        min_length=1, description="Existing host bind source or named Docker volume."
+    )
+    target: str = Field(
+        min_length=1, description="Absolute destination inside the container."
+    )
+    type: Literal["bind", "volume"] = Field(
+        description="Docker mount category; bind sources are never created implicitly."
+    )
+    read_only: bool = Field(
+        default=False,
+        description="Whether the mounted data is read-only in the container.",
+    )
+
+    def to_sdk(self) -> dict[str, object]:
+        """Return the exact explicit mount request accepted by the Docker SDK.
+
+        Returns
+        -------
+        dict[str, object]
+            Docker Mounts entry, with no host-directory creation option.
+        """
+        return {
+            "Source": self.source,
+            "Target": self.target,
+            "Type": self.type,
+            "ReadOnly": self.read_only,
+        }
 
 
 class BindMount(BaseModel):
@@ -83,6 +118,10 @@ class ContainerSpec(BaseModel):
     volumes: dict[str, BindMount] = Field(
         default_factory=dict,
         description="Host paths mapped to typed container bind-mount records.",
+    )
+    mounts: list[Mount] = Field(
+        default_factory=list,
+        description="Explicit bind/named-volume mounts retaining --mount source validation.",
     )
     network_mode: str = Field(
         default=settings.DEFAULT_NETWORK_MODE,
@@ -206,3 +245,80 @@ class ContainerReservation(BaseModel):
                 key: value.get_secret_value() for key, value in self.labels.items()
             },
         }
+
+
+class ContainerReceipt(BaseModel):
+    """Private durable intent optionally bound to an observed immutable ID."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+    reservation: ContainerReservation = Field(
+        repr=False,
+        exclude=True,
+        description="Canonical private ownership intent saved before dispatch.",
+    )
+    observed_id: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+        description="Immutable ID returned and ownership-verified by a completed create.",
+    )
+
+    @property
+    def identity(self) -> ContainerIdentity | None:
+        """Return the observed identity, or None while create remains uncertain."""
+        if self.observed_id is None:
+            return None
+        return ContainerIdentity(
+            id=self.observed_id,
+            name=self.reservation.name,
+            labels=self.reservation.labels,
+        )
+
+    @classmethod
+    def from_private_record(cls, record: Mapping[str, object]) -> "ContainerReceipt":
+        """Read current records and legacy intent-only records.
+
+        Parameters
+        ----------
+        record : Mapping[str, object]
+            Private local record; never log this input.
+
+        Returns
+        -------
+        ContainerReceipt
+            Validated ownership intent and optional observed ID.
+        """
+        value = dict(record)
+        observed = value.pop("observed_id", None)
+        return cls(
+            reservation=ContainerReservation.from_private_record(value),
+            observed_id=observed,
+        )
+
+    def to_private_record(self) -> dict[str, object]:
+        """Project secrets only into the caller-owned private receipt file.
+
+        Returns
+        -------
+        dict[str, object]
+            Backward-compatible name/labels plus an observed ID when known.
+        """
+        value = self.reservation.to_private_record()
+        if self.observed_id is not None:
+            value["observed_id"] = self.observed_id
+        return value
+
+
+class ContainerState(BaseModel):
+    """Confirmed lifecycle state without confusing removal with successful exit."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    running: bool = Field(
+        description="Whether the owned container is confirmed running."
+    )
+    exit_code: int | None = Field(
+        default=None,
+        description="Confirmed integer exit code, never inferred from absence.",
+    )
+    removed: bool = Field(
+        description="Whether the immutable observed ID is confirmed absent."
+    )

@@ -32,6 +32,39 @@ before `create(spec, reservation)`. A `CreationUnconfirmedError` also carries
 its private receipt. Reconcile that receipt before retrying; a timeout may mean
 Docker created the resource. Volume create errors likewise retain a receipt.
 
+## Interactive container sessions
+
+`client.sessions.open(ContainerSession(spec=spec, limits=limits,
+receipt_path=private_state.joinpath("session.json")))` returns a creator-owned
+`Session`. Supply an immutable image ID, `stdin_open=True`, explicit stream
+limits and an existing private state directory. Creation attaches stdin and
+both output channels before starting the container. `write(bytes)` sends stdin;
+`read_frame()` returns undecoded stdout/stderr frames. One reader and serialized
+writers share the original lifetime and combined byte budget.
+
+`state()` returns a validated `ContainerState`; removal never invents an exit
+code. `wait(timeout)` confirms exit independently. `terminate()` may run from
+another thread and removes only the verified immutable ID. It deliberately
+leaves the receipt for `close()` on the creator thread, which confirms removal,
+clears intent, detaches and releases its native lock. Keep the Client open for
+the entire session. Closing an attachment alone never establishes termination.
+
+After verified creation, jobs and sessions atomically record the observed
+immutable ID in their private receipt. Recovery can then safely accept that ID's
+confirmed absence, including removal by an independent application supervisor.
+Legacy intent-only records remain readable and retain conservative unknown-create
+handling. Failed observation persistence retains the earlier intent. Applications
+must recover per-run receipts on the original endpoint before dispatching anew.
+
+`ContainerSpec.mounts` supports typed bind and named-volume `Mount` records. These
+use Docker's explicit Mounts API and check bind sources on the client host before
+dispatch: a missing source is refused rather than silently created by Docker
+Desktop. These mounts require local client-visible sources, including when an
+explicit remote endpoint is selected. Callers own source-directory stability
+between validation and dispatch. Existing `volumes` retains its original bind
+semantics. Interactive stdin uses SDK attached-stdin defaults, verified by
+`OpenStdin` and `StdinOnce` readback; no independent half-close API is promised.
+
 ## One-shot container jobs
 
 `client.execution.run` executes inside an existing owned container.
@@ -108,7 +141,7 @@ responses and all post-create readback failures remain uncertain. No error-text
 parsing or whole-status-family inference is used. The contract follows the
 [Docker create API](https://docs.docker.com/reference/api/engine/version/v1.51/).
 
-This `0.1.0a2` local-trial increment adds `filelock` as a runtime dependency for
+This `0.1.0a3` local-trial increment retains `filelock` as a runtime dependency for
 native inter-process exclusion; there is no custom platform lock implementation.
 
 ## Connection and lifecycle boundaries
