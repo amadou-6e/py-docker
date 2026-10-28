@@ -17,7 +17,67 @@ from py_docker.containers.receipts import ReceiptStore
 from py_docker.errors import CleanupUnconfirmedError, DockerOperationError
 from py_docker.sessions.models import ContainerSession
 from py_docker.sessions.service import Sessions
-from py_docker.streams.models import StreamLimits
+from py_docker.sessions.session import Session
+from py_docker.containers.watch import ContainerWatch
+from py_docker.streams.models import Frame, StreamLimits
+
+
+def test_lines_preserve_channels_partial_utf8_and_final_bytes():
+    """Binary framing never decodes partial characters or joins channels."""
+    stream = Mock()
+    stream.read_frame.side_effect = [
+        Frame(channel="stdout", data=b"a\xe2"),
+        Frame(channel="stderr", data=b"warning\n"),
+        Frame(channel="stdout", data=b"\x82\xac\nlast"),
+        None,
+    ]
+    session = Session(Mock(), Mock(), Mock(), Mock(), stream)
+    lines = []
+    while (line := session.read_line()) is not None:
+        lines.append((line.channel, line.data))
+    assert lines == [
+        ("stderr", b"warning\n"),
+        ("stdout", "a\u20ac\n".encode()),
+        ("stdout", b"last"),
+    ]
+    with pytest.raises(DockerOperationError):
+        session.read_frame()
+
+
+def test_eof_is_not_process_success():
+    """A running process after EOF is an uncertain transport, never success."""
+    containers, stream = Mock(), Mock()
+    stream.read_frame.return_value = None
+    containers.state.return_value.running = True
+    session = Session(containers, Mock(), Mock(), Mock(), stream)
+    assert not session.exited()
+    assert session.read_line() is None
+    with pytest.raises(DockerOperationError):
+        session.exited()
+
+
+def test_reservation_watch_never_promotes_unobserved_absence():
+    """A bounded period without an observed create is not cleanup proof."""
+    containers = Mock()
+    containers.reconcile.return_value = None
+    watch = ContainerWatch(
+        containers, ContainerReservation(name="owned", labels={"owner": "secret"})
+    )
+    result = watch.cleanup(watch_seconds=0.001)
+    assert not result.verified and result.detail == "never_observed"
+    containers.remove.assert_not_called()
+
+
+def test_reservation_watch_removes_only_verified_identity():
+    """Removal uses the observed immutable ID, never the reservation name."""
+    containers = Mock()
+    identity = ContainerIdentity(id="a" * 64, name="owned", labels={"owner": "secret"})
+    containers.reconcile.side_effect = [identity, None]
+    result = ContainerWatch(
+        containers, ContainerReservation(name="owned", labels={"owner": "secret"})
+    ).cleanup()
+    assert result.verified and result.detail == "removed"
+    containers.remove.assert_called_once_with(identity, force=True)
 
 
 def test_observed_id_recovery_accepts_external_supervisor_removal(tmp_path):

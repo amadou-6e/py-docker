@@ -1,6 +1,7 @@
 """An owned binary interactive session; detachment never proves termination."""
 
 import threading
+from collections import deque
 
 from py_docker.containers.models import (
     ContainerIdentity,
@@ -10,7 +11,7 @@ from py_docker.containers.models import (
 from py_docker.containers.receipts import ReceiptStore
 from py_docker.containers.service import Containers
 from py_docker.errors import CleanupUnconfirmedError, DockerOperationError
-from py_docker.streams.models import Frame
+from py_docker.streams.models import Frame, Line
 from py_docker.streams.socket import AttachedStream
 
 
@@ -48,6 +49,10 @@ class Session:
         self._creator = threading.get_ident()
         self._termination_lock = threading.Lock()
         self._closed = False
+        self._read_mode = None
+        self._eof = False
+        self._line_buffers = {"stdout": bytearray(), "stderr": bytearray()}
+        self._lines = deque()
 
     def __enter__(self) -> "Session":
         """Return this open session for creator-thread deterministic cleanup."""
@@ -70,7 +75,64 @@ class Session:
         Frame or None
             One stdout/stderr frame; errors retain existing safe stream codes.
         """
-        return self._stream.read_frame()
+        self._select_reader("frames")
+        frame = self._stream.read_frame()
+        self._eof = frame is None
+        return frame
+
+    def read_line(self) -> Line | None:
+        """Read a bounded binary line without decoding or mixing output channels.
+
+        Returns
+        -------
+        Line or None
+            Newline-preserving output, final partial bytes, or confirmed stream
+            EOF. EOF does not establish process exit. Use one reader and choose
+            either frame or line mode for the session, never both.
+
+        Raises
+        ------
+        DockerOperationError
+            Read modes were mixed or the underlying bounded stream failed.
+        """
+        self._select_reader("lines")
+        while not self._lines and not self._eof:
+            frame = self._stream.read_frame()
+            if frame is None:
+                self._eof = True
+                for channel, pending in self._line_buffers.items():
+                    if pending:
+                        self._lines.append(Line(channel=channel, data=bytes(pending)))
+                        pending.clear()
+                break
+            pending = self._line_buffers[frame.channel]
+            pending.extend(frame.data)
+            while b"\n" in pending:
+                line, _, remaining = pending.partition(b"\n")
+                self._line_buffers[frame.channel] = pending = bytearray(remaining)
+                self._lines.append(Line(channel=frame.channel, data=line + b"\n"))
+        return self._lines.popleft() if self._lines else None
+
+    def exited(self) -> bool:
+        """Confirm termination after EOF without equating removal with exit zero.
+
+        Returns
+        -------
+        bool
+            False before EOF or for a nonterminal created state; True for
+            confirmed removal or a known exit code. Query state for that code.
+
+        Raises
+        ------
+        DockerOperationError
+            Output ended while the process still runs, or state is uncertain.
+        """
+        if not self._eof:
+            return False
+        state = self.state()
+        if state.running:
+            raise DockerOperationError("confirm container exit after output EOF")
+        return state.removed or state.exit_code is not None
 
     def write(self, data: bytes) -> None:
         """Write complete binary stdin data within the acquired stream budget.
@@ -150,3 +212,9 @@ class Session:
             self._closed = True
         if error is not None:
             raise error
+
+    def _select_reader(self, mode: str) -> None:
+        """Keep buffering canonical by refusing a change of read mode."""
+        if self._read_mode not in (None, mode):
+            raise DockerOperationError("mix container frame and line readers")
+        self._read_mode = mode

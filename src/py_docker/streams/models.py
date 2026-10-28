@@ -36,6 +36,14 @@ class Frame(BaseModel):
     )
 
 
+class Line(Frame):
+    """One channel's complete binary line, or its final unterminated bytes.
+
+    Newline bytes are preserved. Decoding and application message parsing belong
+    to the consumer; a line may span any number of Docker frames.
+    """
+
+
 class StreamBudget(BaseModel):
     """Keep private byte consumption and monotonic deadline state together."""
 

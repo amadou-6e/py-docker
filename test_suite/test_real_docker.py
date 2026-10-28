@@ -64,7 +64,10 @@ os._exit(0)
 
 
 @pytest.mark.integration
-def test_real_interactive_stdin_binary_channels_and_blocked_reader_cleanup(tmp_path):
+@pytest.mark.parametrize("mode", ["frames", "lines"])
+def test_real_interactive_stdin_binary_channels_and_blocked_reader_cleanup(
+    tmp_path, mode
+):
     """Exercise real stdin and cross-thread removal while a binary read blocks."""
     image = os.environ.get("PY_DOCKER_TEST_IMAGE")
     if not image:
@@ -86,14 +89,15 @@ def test_real_interactive_stdin_binary_channels_and_blocked_reader_cleanup(tmp_p
             receipt_path=tmp_path.joinpath("session.json"),
         )
         session = client.sessions.open(request)
+        read = session.read_frame if mode == "frames" else session.read_line
         worker = None
         try:
-            frame = session.read_frame()
+            frame = read()
             assert frame.channel == "stdout" and frame.data == b"ready\n"
             session.write(b"\x00\xff\n")
             output = {"stdout": bytearray(), "stderr": bytearray()}
             while not (output["stdout"] and output["stderr"]):
-                frame = session.read_frame()
+                frame = read()
                 assert frame is not None
                 output[frame.channel].extend(frame.data)
             assert bytes(output["stdout"]) == b"\x00\xff\n"
@@ -105,7 +109,7 @@ def test_real_interactive_stdin_binary_channels_and_blocked_reader_cleanup(tmp_p
                 """Record safe EOF/error categories without retaining raw output."""
                 reader_started.set()
                 try:
-                    terminal.append(session.read_frame())
+                    terminal.append(read())
                 except Exception as error:
                     terminal.append(type(error).__name__)
 
@@ -113,12 +117,15 @@ def test_real_interactive_stdin_binary_channels_and_blocked_reader_cleanup(tmp_p
             worker.start()
             assert reader_started.wait(timeout=2)
             terminator = threading.Thread(target=session.terminate)
-            terminator.start()
-            terminator.join(timeout=10)
-            assert not terminator.is_alive()
+            if mode == "frames":
+                terminator.start()
+                terminator.join(timeout=10)
+                assert not terminator.is_alive()
+            else:
+                session.close()
             worker.join(timeout=5)
             assert not worker.is_alive()
-            assert request.receipt_path.exists()
+            assert request.receipt_path.exists() == (mode == "frames")
             assert session.state().removed
         finally:
             session.close()

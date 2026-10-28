@@ -18,6 +18,7 @@ from py_docker.containers.models import (
     ContainerState,
 )
 from py_docker.containers.settings import DEFINITIVE_CREATE_REJECTIONS
+from py_docker.containers.watch import ContainerWatch
 from py_docker.errors import (
     CreationRejectedError,
     CreationUnconfirmedError,
@@ -39,6 +40,21 @@ class Containers:
     def __init__(self, sdk: DockerClient) -> None:
         """Reuse the supplied SDK session without taking ownership of its lifetime."""
         self.sdk = sdk
+
+    def watch(self, reservation: ContainerReservation) -> ContainerWatch:
+        """Return an endpoint-bound observation and cleanup handle.
+
+        Parameters
+        ----------
+        reservation : ContainerReservation
+            Private exact name and labels whose delayed creation is supervised.
+
+        Returns
+        -------
+        ContainerWatch
+            Lightweight handle sharing this client's lifetime and endpoint.
+        """
+        return ContainerWatch(self, reservation)
 
     def reserve(self, spec: ContainerSpec) -> ContainerReservation:
         """Prepare a private ownership token before any create request.

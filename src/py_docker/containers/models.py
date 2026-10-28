@@ -9,6 +9,16 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from py_docker.containers import settings
 
 
+class CleanupResult(BaseModel):
+    """Safe outcome of reservation cleanup, including late-create uncertainty."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    verified: bool = Field(description="Whether exact cleanup was confirmed.")
+    detail: str = Field(
+        description="Safe stable cleanup category, never daemon output."
+    )
+
+
 class Mount(BaseModel):
     """Explicit mounts preserve Docker --mount missing-source semantics."""
 
