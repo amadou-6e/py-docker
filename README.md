@@ -64,6 +64,12 @@ explicit remote endpoint is selected. Callers own source-directory stability
 between validation and dispatch. Existing `volumes` retains its original bind
 semantics. Interactive stdin uses SDK attached-stdin defaults, verified by
 `OpenStdin` and `StdinOnce` readback; no independent half-close API is promised.
+Readback permits an omitted false `ReadOnly` and, only on the local Windows
+named-pipe adapter, Docker Desktop's `/run/desktop/mnt/host/<drive>/...` spelling
+of the same absolute Windows source. Other source/target/permission changes and
+additional mount options remain failures; remote endpoints do not get this path
+translation. Real missing-source and external-removal recovery checks complement
+the internal normalization controls.
 
 ## One-shot container jobs
 

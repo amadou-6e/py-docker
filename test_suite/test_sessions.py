@@ -2,7 +2,7 @@
 
 import json
 import threading
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -14,7 +14,7 @@ from py_docker.containers.models import (
     Mount,
 )
 from py_docker.containers.receipts import ReceiptStore
-from py_docker.errors import DockerOperationError
+from py_docker.errors import CleanupUnconfirmedError, DockerOperationError
 from py_docker.sessions.models import ContainerSession
 from py_docker.sessions.service import Sessions
 from py_docker.streams.models import StreamLimits
@@ -124,3 +124,68 @@ def test_desktop_mount_normalization_is_endpoint_and_identity_specific():
     assert not writable.matches_readback(
         dict(omitted_false, ReadOnly=None), local_npipe=False
     )
+
+
+def test_observation_replace_failure_keeps_original_intent(tmp_path):
+    """A failed atomic ID update neither corrupts intent nor leaks a temp record."""
+    path = tmp_path.joinpath("receipt.json")
+    reservation = ContainerReservation(name="owned", labels={"owner": "private"})
+    identity = ContainerIdentity(id="a" * 64, name="owned", labels=reservation.labels)
+    with ReceiptStore(path) as store:
+        store.save(reservation)
+        before = path.read_bytes()
+        with patch(
+            "py_docker.containers.receipts.os.replace",
+            side_effect=OSError("private raw control"),
+        ):
+            with pytest.raises(CleanupUnconfirmedError) as caught:
+                store.observe(reservation, identity)
+        assert path.read_bytes() == before
+        assert "private raw control" not in str(caught.value)
+        assert not list(tmp_path.glob(".container-receipt-*"))
+
+
+@pytest.mark.parametrize("phase", ["attach", "start"])
+def test_session_open_failure_cleans_once_and_preserves_safe_primary(tmp_path, phase):
+    """A partially opened session never retries create or strands observed intent."""
+    reservation = ContainerReservation(name="owned", labels={"owner": "private"})
+    identity = ContainerIdentity(id="a" * 64, name="owned", labels=reservation.labels)
+    containers, execution = Mock(), Mock()
+    containers.reserve.return_value = reservation
+    containers.create.return_value = identity
+    primary = DockerOperationError("internal " + phase)
+    (execution.attach if phase == "attach" else containers.start).side_effect = primary
+    request = ContainerSession(
+        spec=ContainerSpec(image="sha256:" + "b" * 64, name="owned", stdin_open=True),
+        limits=StreamLimits(seconds=2, max_bytes=1024),
+        receipt_path=tmp_path.joinpath("receipt.json"),
+    )
+    with pytest.raises(DockerOperationError) as caught:
+        Sessions(containers, execution).open(request)
+    assert caught.value is primary
+    assert not request.receipt_path.exists()
+    containers.create.assert_called_once()
+    containers.remove.assert_called_once_with(identity, force=True)
+
+
+def test_context_cleanup_keeps_safe_application_failure(tmp_path):
+    """Cleanup uncertainty takes precedence while retaining the safe primary code."""
+    reservation = ContainerReservation(name="owned", labels={"owner": "private"})
+    identity = ContainerIdentity(id="a" * 64, name="owned", labels=reservation.labels)
+    containers, execution = Mock(), Mock()
+    containers.reserve.return_value = reservation
+    containers.create.return_value = identity
+    containers.remove.side_effect = DockerOperationError("internal removal control")
+    request = ContainerSession(
+        spec=ContainerSpec(image="sha256:" + "b" * 64, name="owned", stdin_open=True),
+        limits=StreamLimits(seconds=2, max_bytes=1024),
+        receipt_path=tmp_path.joinpath("receipt.json"),
+    )
+    primary = DockerOperationError("internal application control")
+    with (
+        pytest.raises(CleanupUnconfirmedError) as caught,
+        Sessions(containers, execution).open(request),
+    ):
+        raise primary
+    assert caught.value.primary is primary
+    assert request.receipt_path.exists()

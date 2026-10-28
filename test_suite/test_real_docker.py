@@ -1,6 +1,9 @@
 """Opt-in real Docker checks with no credentials, pulling or shared resources."""
 
+import json
 import os
+import subprocess
+import sys
 import threading
 import uuid
 from pathlib import Path
@@ -8,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from py_docker import Client
-from py_docker.containers.models import ContainerSpec, Mount
+from py_docker.containers.models import ContainerReceipt, ContainerSpec, Mount
 from py_docker.errors import (
     CreationUnconfirmedError,
     DeadlineError,
@@ -18,6 +21,46 @@ from py_docker.errors import (
 from py_docker.jobs.models import ContainerJob
 from py_docker.sessions.models import ContainerSession
 from py_docker.streams.models import StreamLimits
+
+
+@pytest.mark.integration
+def test_real_receipt_survives_client_exit_and_external_removal(tmp_path):
+    """Recover an observed ID after a real client exit and independent removal."""
+    if not os.environ.get("PY_DOCKER_TEST_IMAGE"):
+        pytest.skip("Set PY_DOCKER_TEST_IMAGE to an existing Python image")
+    receipt = tmp_path.joinpath("crash-session.json")
+    child_code = """
+import os,sys,uuid
+from pathlib import Path
+from py_docker import Client
+from py_docker.containers.models import ContainerSpec
+from py_docker.sessions.models import ContainerSession
+from py_docker.streams.models import StreamLimits
+client=Client()
+client.sessions.open(ContainerSession(
+    spec=ContainerSpec(image=client.images.resolve(os.environ['PY_DOCKER_TEST_IMAGE']),
+        name='py-docker-crash-'+uuid.uuid4().hex,stdin_open=True,
+        command=['python3','-c','import time;time.sleep(60)']),
+    limits=StreamLimits(seconds=30,max_bytes=1024),receipt_path=Path(sys.argv[1])))
+os._exit(0)
+"""
+    child = subprocess.run(
+        [sys.executable, "-c", child_code, str(receipt)],
+        capture_output=True,
+        timeout=40,
+        check=False,
+    )
+    assert child.returncode == 0
+    observed = ContainerReceipt.from_private_record(json.loads(receipt.read_text()))
+    assert observed.identity is not None
+    with Client() as client:
+        try:
+            client.containers.remove(observed.identity, force=True)
+            assert client.containers.inspect(observed.identity) is None
+            client.sessions.recover(receipt)
+            assert not receipt.exists()
+        finally:
+            client.containers.remove(observed.identity, force=True)
 
 
 @pytest.mark.integration

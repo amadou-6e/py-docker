@@ -164,7 +164,11 @@ class ReceiptStore:
             ) from None
         finally:
             if temporary is not None:
-                temporary.unlink(missing_ok=True)
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    # Preserve the safe observation failure, not a raw filesystem error.
+                    pass
 
     def save(self, reservation: ContainerReservation) -> None:
         """Flush ownership intent to an exclusive private file before a create request.

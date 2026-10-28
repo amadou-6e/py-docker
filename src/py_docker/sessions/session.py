@@ -55,7 +55,12 @@ class Session:
 
     def __exit__(self, *_: object) -> None:
         """Confirm exact cleanup even when application execution raises."""
-        self.close()
+        try:
+            self.close()
+        except CleanupUnconfirmedError as error:
+            if isinstance(_[1], DockerOperationError):
+                error.primary = _[1]
+            raise
 
     def read_frame(self) -> Frame | None:
         """Read one binary output frame; None means attachment EOF, not success.
