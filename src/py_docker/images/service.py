@@ -4,7 +4,7 @@ from docker import DockerClient
 from docker.errors import DockerException
 from requests.exceptions import RequestException
 
-from py_docker.errors import DockerOperationError, OwnershipConflictError
+from py_docker.errors import ImageResolutionError, OwnershipConflictError
 
 
 class Images:
@@ -37,7 +37,7 @@ class Images:
 
         Raises
         ------
-        DockerOperationError
+        ImageResolutionError
             The local image could not be inspected; no pull was attempted.
         OwnershipConflictError
             The locally resolved immutable image ID differs from expected_id.
@@ -45,7 +45,7 @@ class Images:
         try:
             image = self.sdk.images.get(reference)
         except (DockerException, RequestException):
-            raise DockerOperationError("inspect local image") from None
+            raise ImageResolutionError("inspect local image") from None
         if expected_id is not None and image.id != expected_id:
             raise OwnershipConflictError("verify immutable image ID")
         return image.id

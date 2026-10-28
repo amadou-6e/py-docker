@@ -2,6 +2,7 @@
 
 import math
 import uuid
+from pathlib import Path
 
 from docker import DockerClient
 from docker.errors import APIError, DockerException, NotFound
@@ -14,8 +15,10 @@ from py_docker.containers.models import (
     ContainerIdentity,
     ContainerReservation,
     ContainerSpec,
+    ContainerState,
 )
 from py_docker.containers.settings import DEFINITIVE_CREATE_REJECTIONS
+from py_docker.containers.watch import ContainerWatch
 from py_docker.errors import (
     CreationRejectedError,
     CreationUnconfirmedError,
@@ -32,11 +35,30 @@ class Containers:
     ----------
     sdk : DockerClient
         Existing Docker SDK session; the caller owns its lifetime.
+    endpoint : str or None
+        Original resolved connection endpoint. Lifecycle jobs and sessions require
+        it so recovery cannot infer absence on a different daemon.
     """
 
-    def __init__(self, sdk: DockerClient) -> None:
+    def __init__(self, sdk: DockerClient, *, endpoint: str | None = None) -> None:
         """Reuse the supplied SDK session without taking ownership of its lifetime."""
         self.sdk = sdk
+        self.endpoint = endpoint
+
+    def watch(self, reservation: ContainerReservation) -> ContainerWatch:
+        """Return an endpoint-bound observation and cleanup handle.
+
+        Parameters
+        ----------
+        reservation : ContainerReservation
+            Private exact name and labels whose delayed creation is supervised.
+
+        Returns
+        -------
+        ContainerWatch
+            Lightweight handle sharing this client's lifetime and endpoint.
+        """
+        return ContainerWatch(self, reservation)
 
     def reserve(self, spec: ContainerSpec) -> ContainerReservation:
         """Prepare a private ownership token before any create request.
@@ -118,11 +140,22 @@ class Containers:
         receipt = reservation or self.reserve(spec)
         if receipt.name != spec.name:
             raise OwnershipConflictError("match container reservation")
+        for mount in spec.mounts:
+            try:
+                missing = mount.type == "bind" and not Path(mount.source).exists()
+            except (OSError, ValueError):
+                raise DockerOperationError(
+                    "verify local bind mount source exists"
+                ) from None
+            if missing:
+                raise DockerOperationError("verify local bind mount source exists")
         labels = {
             key: value.get_secret_value() for key, value in receipt.labels.items()
         }
         options = spec.model_dump(exclude={"image", "environment", "labels"})
         options["volumes"] = spec.sdk_volumes()
+        options["mounts"] = [mount.to_sdk() for mount in spec.mounts]
+        options["ports"] = spec.sdk_ports()
         options["environment"] = {
             key: value.get_secret_value() for key, value in spec.environment.items()
         }
@@ -306,6 +339,78 @@ class Containers:
         if self.inspect(identity) is not None:
             raise DockerOperationError("confirm container removal")
 
+    def state(self, identity: ContainerIdentity) -> ContainerState:
+        """Inspect exact ownership and validate process state without polling loops.
+
+        Parameters
+        ----------
+        identity : ContainerIdentity
+            Observed immutable ID and expected ownership labels.
+
+        Returns
+        -------
+        ContainerState
+            Confirmed state; absence never invents an exit status.
+
+        Raises
+        ------
+        DockerOperationError
+            Ownership, inspection or Docker state fields are unconfirmed.
+        """
+        container = self.inspect(identity)
+        if container is None:
+            return ContainerState(running=False, removed=True)
+        state = container.attrs.get("State") or {}
+        running = state.get("Running")
+        status = state.get("Status")
+        if type(running) is not bool:
+            raise DockerOperationError("confirm container running state")
+        code = None
+        if not running and status in {"exited", "dead"}:
+            code = state.get("ExitCode")
+            if type(code) is not int:
+                raise DockerOperationError("confirm container exit status")
+        return ContainerState(running=running, exit_code=code, removed=False)
+
+    def published_port(self, identity: ContainerIdentity, container_port: str) -> int:
+        """Return one confirmed loopback port of an owned, started container.
+
+        Parameters
+        ----------
+        identity : ContainerIdentity
+            Immutable ID and ownership labels authorizing inspection.
+        container_port : str
+            Exact port/protocol key requested at creation, such as 4096/tcp.
+
+        Returns
+        -------
+        int
+            Confirmed host port bound exclusively to 127.0.0.1.
+
+        Raises
+        ------
+        DockerOperationError
+            The resource, binding or loopback isolation cannot be confirmed.
+        """
+        container = self.inspect(identity)
+        if container is not None:
+            bindings = (
+                container.attrs.get("NetworkSettings", {})
+                .get("Ports", {})
+                .get(container_port)
+            )
+            if isinstance(bindings, list) and len(bindings) == 1:
+                binding = bindings[0]
+                port = binding.get("HostPort", "")
+                if (
+                    binding.get("HostIp") == "127.0.0.1"
+                    and isinstance(port, str)
+                    and port.isdecimal()
+                    and 1 <= int(port) <= 65535
+                ):
+                    return int(port)
+        raise DockerOperationError("confirm loopback published port")
+
     def _verify_launch(
         self, container: Container, spec: ContainerSpec, image: Image
     ) -> None:
@@ -335,6 +440,22 @@ class Containers:
         }
         actual = {key: host.get(key) for key in expected}
         actual["Tmpfs"] = actual["Tmpfs"] or {}
+        if (
+            bool(host.get("Init")) != spec.init
+            or (host.get("NanoCpus") or 0) != spec.nano_cpus
+        ):
+            raise OwnershipConflictError("verify container init and CPU quota")
+        if sorted(host.get("ExtraHosts") or []) != sorted(
+            f"{key}:{value}" for key, value in spec.extra_hosts.items()
+        ):
+            raise OwnershipConflictError("verify container host aliases")
+        bindings = host.get("PortBindings") or {}
+        if set(bindings) != set(spec.ports) or any(
+            bindings[port]
+            != [{"HostIp": "127.0.0.1", "HostPort": str(number) if number else ""}]
+            for port, number in spec.ports.items()
+        ):
+            raise OwnershipConflictError("verify loopback port bindings")
         if actual != expected:
             raise OwnershipConflictError("verify container sandbox configuration")
         for key, values in (
@@ -348,8 +469,20 @@ class Containers:
             convert_volume_binds(spec.sdk_volumes())
         ):
             raise OwnershipConflictError("verify container bind mounts")
+        actual_mounts = host.get("Mounts") or []
+        if len(actual_mounts) != len(spec.mounts) or not all(
+            mount.matches_readback(
+                actual, local_npipe=self.sdk.api.base_url == "http+docker://localnpipe"
+            )
+            for mount, actual in zip(spec.mounts, actual_mounts)
+        ):
+            raise OwnershipConflictError("verify explicit container mounts")
         image_config = image.attrs.get("Config", {})
         config = container.attrs.get("Config", {})
+        if bool(config.get("OpenStdin")) != spec.stdin_open or bool(config.get("Tty")):
+            raise OwnershipConflictError("verify container stdin and terminal")
+        if spec.stdin_open and config.get("StdinOnce") is not True:
+            raise OwnershipConflictError("verify attached stdin closure")
         expected_env = {
             value.partition("=")[0]: value.partition("=")[2]
             for value in image_config.get("Env") or []

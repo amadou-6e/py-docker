@@ -19,6 +19,32 @@ from py_docker.errors import (
 )
 
 
+def test_named_volume_does_not_adopt_a_racing_existing_name():
+    """Docker's idempotent volume create cannot transfer someone else's ownership."""
+    from py_docker.errors import CreationUnconfirmedError
+    from py_docker.volumes.service import Volumes
+
+    sdk = Mock()
+    sdk.volumes.create.return_value.attrs = {"Labels": {"owner": "someone-else"}}
+    with pytest.raises(CreationUnconfirmedError) as error:
+        Volumes(sdk).create(name="explicit-profile")
+    assert error.value.receipt.name == "explicit-profile"
+    sdk.volumes.remove.assert_not_called()
+
+
+def test_selected_volume_lookup_distinguishes_absence_from_uncertainty():
+    """Only an actual NotFound is absence; daemon errors remain safe failures."""
+    from py_docker.volumes.service import Volumes
+
+    sdk = Mock()
+    sdk.volumes.get.side_effect = [NotFound("private"), DockerException("private")]
+    volumes = Volumes(sdk)
+    assert not volumes.exists("selected")
+    with pytest.raises(DockerOperationError) as error:
+        volumes.exists("selected")
+    assert "private" not in str(error.value)
+
+
 def test_explicit_context_precedes_environment_host():
     """Keep explicit context selection independent of an ambient Docker host."""
     with patch.object(

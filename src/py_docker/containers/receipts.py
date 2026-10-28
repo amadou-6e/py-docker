@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 
 from filelock import FileLock, SoftFileLock, Timeout
 
-from py_docker.containers.models import ContainerIdentity, ContainerReservation
+from py_docker.containers.models import (
+    ContainerIdentity,
+    ContainerReceipt,
+    ContainerReservation,
+)
 from py_docker.containers.service import Containers
 from py_docker.errors import (
     CleanupUnconfirmedError,
@@ -103,18 +108,83 @@ class ReceiptStore:
             return
         try:
             value = json.loads(self._path.read_text(encoding="utf-8"))
-            receipt = ContainerReservation.from_private_record(value)
+            receipt = ContainerReceipt.from_private_record(value)
         except (OSError, ValueError, TypeError):
             raise CleanupUnconfirmedError("read private container receipt") from None
-        self.cleanup(containers, receipt)
+        if not receipt.endpoint or receipt.endpoint != containers.endpoint:
+            raise CleanupUnconfirmedError("verify original container endpoint")
+        self.cleanup(containers, receipt.reservation, receipt.identity)
 
-    def save(self, reservation: ContainerReservation) -> None:
+    def observe(
+        self, reservation: ContainerReservation, identity: ContainerIdentity
+    ) -> None:
+        """Atomically bind a saved intent to the verified immutable container ID.
+
+        Parameters
+        ----------
+        reservation : ContainerReservation
+            Exact intent saved by this lifecycle owner before create.
+        identity : ContainerIdentity
+            ID and matching name/labels returned by verified creation.
+
+        Raises
+        ------
+        DockerOperationError
+            Persisting the observation failed; the caller must clean the known
+            identity before deciding whether cleanup is uncertain.
+        """
+        self._require_lock()
+        temporary = None
+        try:
+            stored = ContainerReceipt.from_private_record(
+                json.loads(self._path.read_text(encoding="utf-8"))
+            )
+            if (
+                stored.reservation != reservation
+                or identity.name != reservation.name
+                or identity.labels != reservation.labels
+            ):
+                raise ValueError("Receipt identity changed")
+            if stored.observed_id not in (None, identity.id):
+                raise ValueError("Observed ID changed")
+            descriptor, name = tempfile.mkstemp(
+                prefix=".container-receipt-", dir=self._path.parent
+            )
+            temporary = Path(name)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as target:
+                json.dump(
+                    ContainerReceipt(
+                        reservation=reservation,
+                        observed_id=identity.id,
+                        endpoint=stored.endpoint,
+                    ).to_private_record(),
+                    target,
+                )
+                target.flush()
+                os.fsync(target.fileno())
+            os.replace(temporary, self._path)
+        except Exception:
+            raise DockerOperationError("record observed container identity") from None
+        finally:
+            if temporary is not None:
+                try:
+                    temporary.unlink(missing_ok=True)
+                except OSError:
+                    # Preserve the safe observation failure, not a raw filesystem error.
+                    pass
+
+    def save(
+        self, reservation: ContainerReservation, *, endpoint: str | None = None
+    ) -> None:
         """Flush ownership intent to an exclusive private file before a create request.
 
         Parameters
         ----------
         reservation : ContainerReservation
             Canonical private intent; secret conversion is confined to this file.
+        endpoint : str or None
+            Original resolved daemon endpoint. None writes a legacy record that
+            automatic recovery must refuse rather than guess a daemon.
 
         Raises
         ------
@@ -131,7 +201,12 @@ class ReceiptStore:
                 self._path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
             )
             with os.fdopen(descriptor, "w", encoding="utf-8") as target:
-                json.dump(reservation.to_private_record(), target)
+                json.dump(
+                    ContainerReceipt(
+                        reservation=reservation, endpoint=endpoint
+                    ).to_private_record(),
+                    target,
+                )
                 target.flush()
                 os.fsync(target.fileno())
         except FileExistsError:
@@ -158,9 +233,9 @@ class ReceiptStore:
         """
         self._require_lock()
         try:
-            stored = ContainerReservation.from_private_record(
+            stored = ContainerReceipt.from_private_record(
                 json.loads(self._path.read_text(encoding="utf-8"))
-            )
+            ).reservation
             if stored != reservation:
                 raise CleanupUnconfirmedError(
                     "verify unstarted container receipt", reservation

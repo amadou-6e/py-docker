@@ -1,21 +1,271 @@
 """Opt-in real Docker checks with no credentials, pulling or shared resources."""
 
+import json
 import os
+import subprocess
+import sys
+import threading
 import uuid
 from pathlib import Path
 
 import pytest
 
 from py_docker import Client
-from py_docker.containers.models import ContainerSpec
+from py_docker.containers.models import ContainerReceipt, ContainerSpec, Mount
 from py_docker.errors import (
     CreationUnconfirmedError,
     DeadlineError,
+    JobCancelledError,
     OutputLimitError,
     OwnershipConflictError,
 )
 from py_docker.jobs.models import ContainerJob
+from py_docker.sessions.models import ContainerSession
 from py_docker.streams.models import StreamLimits
+
+
+@pytest.mark.integration
+def test_real_job_cancellation_stops_an_observed_running_container(tmp_path):
+    """Cancel real running work without waiting for its in-container deadline."""
+    import time
+
+    image = os.environ.get("PY_DOCKER_TEST_IMAGE")
+    if not image:
+        pytest.skip("Set PY_DOCKER_TEST_IMAGE to an existing Python image")
+    cancelled = threading.Event()
+    observed = {}
+    receipt = tmp_path.joinpath("cancel-job.json")
+    with Client() as client:
+
+        def request_stop():
+            """Set the caller signal only after actual daemon running state."""
+            with Client(
+                environment={"DOCKER_HOST": client.connection.endpoint}
+            ) as monitor:
+                deadline = time.monotonic() + 30
+                while time.monotonic() < deadline:
+                    try:
+                        saved = ContainerReceipt.from_private_record(
+                            json.loads(receipt.read_text(encoding="utf-8"))
+                        )
+                        if (
+                            saved.identity is not None
+                            and monitor.containers.state(saved.identity).running
+                        ):
+                            observed.update(
+                                identity=saved.identity, stopped_at=time.monotonic()
+                            )
+                            cancelled.set()
+                            return
+                    except (OSError, ValueError):
+                        pass
+                    time.sleep(0.02)
+                cancelled.set()
+
+        watcher = threading.Thread(target=request_stop)
+        watcher.start()
+        try:
+            with pytest.raises(JobCancelledError):
+                client.jobs.run(
+                    ContainerJob(
+                        spec=ContainerSpec(
+                            image=client.images.resolve(image),
+                            name="py-docker-cancel-job-" + uuid.uuid4().hex,
+                            entrypoint=["python3"],
+                            command=["-c", "import time;time.sleep(60)"],
+                        ),
+                        limits=StreamLimits(seconds=35, max_bytes=1024),
+                        receipt_path=receipt,
+                        wait_timeout_seconds=5.0,
+                    ),
+                    cancelled=cancelled,
+                )
+            assert observed
+            assert time.monotonic() - observed["stopped_at"] < 10
+            assert client.containers.inspect(observed["identity"]) is None
+            assert not receipt.exists()
+        finally:
+            watcher.join(35)
+            if receipt.exists():
+                client.sessions.recover(receipt)
+
+
+@pytest.mark.integration
+def test_real_output_only_service_preserves_loopback_policy(tmp_path):
+    """Exercise the real output-only attachment and requested sandbox readback."""
+    from py_docker.sessions.models import ContainerSession
+    from py_docker.streams.models import StreamLimits
+
+    image = os.environ.get("PY_DOCKER_TEST_IMAGE")
+    if not image:
+        pytest.skip("Set PY_DOCKER_TEST_IMAGE to an existing Python image")
+    with Client() as client:
+        request = ContainerSession(
+            spec=ContainerSpec(
+                image=client.images.resolve(image),
+                name="py-docker-service-" + uuid.uuid4().hex,
+                entrypoint=["python3"],
+                command=["-u", "-c", "import time;print('ready');time.sleep(30)"],
+                init=True,
+                nano_cpus=1_000_000_000,
+                extra_hosts={"host.docker.internal": "host-gateway"},
+                network_mode="bridge",
+                ports={"4096/tcp": None},
+            ),
+            limits=StreamLimits(seconds=10, max_bytes=1024),
+            receipt_path=tmp_path.joinpath("service.json"),
+        )
+        with client.sessions.open(request) as session:
+            assert session.read_line().data == b"ready\n"
+            assert (
+                1
+                <= client.containers.published_port(session.identity, "4096/tcp")
+                <= 65535
+            )
+        assert client.containers.inspect(session.identity) is None
+        assert not request.receipt_path.exists()
+
+
+@pytest.mark.integration
+def test_real_receipt_survives_client_exit_and_external_removal(tmp_path):
+    """Recover an observed ID after a real client exit and independent removal."""
+    if not os.environ.get("PY_DOCKER_TEST_IMAGE"):
+        pytest.skip("Set PY_DOCKER_TEST_IMAGE to an existing Python image")
+    receipt = tmp_path.joinpath("crash-session.json")
+    child_code = """
+import os,sys,uuid
+from pathlib import Path
+from py_docker import Client
+from py_docker.containers.models import ContainerSpec
+from py_docker.sessions.models import ContainerSession
+from py_docker.streams.models import StreamLimits
+client=Client()
+client.sessions.open(ContainerSession(
+    spec=ContainerSpec(image=client.images.resolve(os.environ['PY_DOCKER_TEST_IMAGE']),
+        name='py-docker-crash-'+uuid.uuid4().hex,stdin_open=True,
+        command=['python3','-c','import time;time.sleep(60)']),
+    limits=StreamLimits(seconds=30,max_bytes=1024),receipt_path=Path(sys.argv[1])))
+os._exit(0)
+"""
+    child = subprocess.run(
+        [sys.executable, "-c", child_code, str(receipt)],
+        capture_output=True,
+        timeout=40,
+        check=False,
+    )
+    assert child.returncode == 0
+    observed = ContainerReceipt.from_private_record(json.loads(receipt.read_text()))
+    assert observed.identity is not None
+    with Client() as client:
+        try:
+            client.containers.remove(observed.identity, force=True)
+            assert client.containers.inspect(observed.identity) is None
+            client.sessions.recover(receipt)
+            assert not receipt.exists()
+        finally:
+            client.containers.remove(observed.identity, force=True)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("mode", ["frames", "lines"])
+def test_real_interactive_stdin_binary_channels_and_blocked_reader_cleanup(
+    tmp_path, mode
+):
+    """Exercise real stdin and cross-thread removal while a binary read blocks."""
+    image = os.environ.get("PY_DOCKER_TEST_IMAGE")
+    if not image:
+        pytest.skip("Set PY_DOCKER_TEST_IMAGE to an existing Python image")
+    with Client() as client:
+        request = ContainerSession(
+            spec=ContainerSpec(
+                image=client.images.resolve(image),
+                name="py-docker-session-" + uuid.uuid4().hex,
+                stdin_open=True,
+                command=[
+                    "python3",
+                    "-u",
+                    "-c",
+                    "import sys;sys.stdout.buffer.write(b'ready\\n');data=sys.stdin.buffer.readline();sys.stdout.buffer.write(data);sys.stderr.buffer.write(b'err\\n');sys.stdin.buffer.read(1)",
+                ],
+            ),
+            limits=StreamLimits(seconds=20, max_bytes=65536),
+            receipt_path=tmp_path.joinpath("session.json"),
+        )
+        session = client.sessions.open(request)
+        read = session.read_frame if mode == "frames" else session.read_line
+        worker = None
+        try:
+            frame = read()
+            assert frame.channel == "stdout" and frame.data == b"ready\n"
+            session.write(b"\x00\xff\n")
+            output = {"stdout": bytearray(), "stderr": bytearray()}
+            while not (output["stdout"] and output["stderr"]):
+                frame = read()
+                assert frame is not None
+                output[frame.channel].extend(frame.data)
+            assert bytes(output["stdout"]) == b"\x00\xff\n"
+            assert bytes(output["stderr"]) == b"err\n"
+            reader_started = threading.Event()
+            terminal = []
+
+            def blocked_read():
+                """Record safe EOF/error categories without retaining raw output."""
+                reader_started.set()
+                try:
+                    terminal.append(read())
+                except Exception as error:
+                    terminal.append(type(error).__name__)
+
+            worker = threading.Thread(target=blocked_read, daemon=True)
+            worker.start()
+            assert reader_started.wait(timeout=2)
+            terminator = threading.Thread(target=session.terminate)
+            if mode == "frames":
+                terminator.start()
+                terminator.join(timeout=10)
+                assert not terminator.is_alive()
+            else:
+                session.close()
+            worker.join(timeout=5)
+            assert not worker.is_alive()
+            assert request.receipt_path.exists() == (mode == "frames")
+            assert session.state().removed
+        finally:
+            session.close()
+            if worker is not None:
+                worker.join(timeout=5)
+        assert not request.receipt_path.exists()
+        assert session.state().removed
+
+
+@pytest.mark.integration
+def test_real_explicit_mount_refuses_missing_bind_source(tmp_path):
+    """The SDK must preserve --mount refusal rather than creating a host path."""
+    image = os.environ.get("PY_DOCKER_TEST_IMAGE")
+    if not image:
+        pytest.skip("Set PY_DOCKER_TEST_IMAGE to an existing Python image")
+    missing = tmp_path.joinpath("missing")
+    with Client() as client:
+        spec = ContainerSpec(
+            image=client.images.resolve(image),
+            name="py-docker-session-" + uuid.uuid4().hex,
+            stdin_open=True,
+            command=["python3", "-c", "pass"],
+            mounts=[Mount(type="bind", source=str(missing), target="/missing")],
+        )
+        request = ContainerSession(
+            spec=spec,
+            limits=StreamLimits(seconds=5, max_bytes=1024),
+            receipt_path=tmp_path.joinpath("receipt.json"),
+        )
+        from py_docker.errors import DockerOperationError
+
+        with pytest.raises(
+            DockerOperationError, match="verify local bind mount source exists"
+        ):
+            client.sessions.open(request)
+        assert not missing.exists()
+        assert not request.receipt_path.exists()
 
 
 @pytest.mark.integration

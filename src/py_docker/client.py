@@ -13,6 +13,7 @@ from py_docker.errors import DockerOperationError
 from py_docker.execution.service import Execution
 from py_docker.images.service import Images
 from py_docker.jobs.service import Jobs
+from py_docker.sessions.service import Sessions
 from py_docker.volumes.service import Volumes
 
 
@@ -50,11 +51,12 @@ class Client:
             )
         except (DockerException, RequestException):
             raise DockerOperationError("connect to Docker") from None
-        self.containers = Containers(self.sdk)
+        self.containers = Containers(self.sdk, endpoint=self.connection.endpoint)
         self.images = Images(self.sdk)
         self.volumes = Volumes(self.sdk)
         self.execution = Execution(self.sdk)
         self.jobs = Jobs(self.containers, self.execution)
+        self.sessions = Sessions(self.containers, self.execution)
 
     def __enter__(self) -> "Client":
         """Return the owned client for a managed lifetime.

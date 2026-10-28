@@ -1,17 +1,19 @@
 """Run a disposable owned container once, preserving uncertain cleanup intent."""
 
+import threading
 from pathlib import Path
 
 from py_docker.containers.receipts import ReceiptStore
 from py_docker.containers.service import Containers
 from py_docker.errors import (
-    CleanupUnconfirmedError,
-    CreationUnconfirmedError,
     DockerOperationError,
+    JobCancelledError,
 )
 from py_docker.execution.models import CommandResult
 from py_docker.execution.service import Execution
 from py_docker.jobs.models import ContainerJob
+from py_docker.sessions.models import ContainerSession
+from py_docker.sessions.service import Sessions
 
 
 class Jobs:
@@ -50,82 +52,63 @@ class Jobs:
         with ReceiptStore(receipt_path) as store:
             store.recover(self._containers)
 
-    def run(self, job: ContainerJob) -> CommandResult:
-        """Create, attach, start, collect and remove one immutable-image container.
+    def run(
+        self, job: ContainerJob, *, cancelled: threading.Event | None = None
+    ) -> CommandResult:
+        """Collect one job, stopping its exact owned container on cancellation.
 
         Parameters
         ----------
         job : ContainerJob
-            Validated launch, stream/wait limits and private receipt location.
+            Immutable launch, stream/wait bounds and private durable receipt.
+        cancelled : threading.Event or None
+            Optional caller-owned stop signal. A pre-set event sends no launch.
 
         Returns
         -------
         CommandResult
-            Confirmed exit code and separate binary output after exact cleanup.
-            A nonzero process exit is returned, not raised.
+            Confirmed process exit and separate binary output after exact cleanup.
 
         Raises
         ------
+        JobCancelledError
+            Stop was requested and cleanup was confirmed. Earlier effects remain.
         CleanupUnconfirmedError
-            Cleanup overrides a safe primary failure, retained in its primary
-            attribute. The private receipt remains for explicit recovery.
-        ReceiptInUseError
-            Another live caller owns the receipt; no recovery or creation was sent.
+            Exact cleanup is uncertain; its receipt remains and takes precedence.
         DockerOperationError
-            Create, stream or wait cannot be confirmed. No automatic create retry.
+            Launch, output or exit cannot be confirmed; no automatic retry.
 
         Notes
         -----
-        Each API request, the acquired stream and the exit wait have separate
-        limits. This is not a total wall-clock deadline. The lifecycle lock is
-        held through recovery, creation and cleanup; another caller cannot steal
-        a live job by recovering its receipt. Caller directories must be private.
+        Jobs and interactive services share the same session journal and lifecycle.
+        The cancellation watcher uses thread-safe exact-ID termination; creator-
+        thread close owns the receipt and final cleanup. Joining the watcher obeys
+        the client's existing per-request timeouts, not a total wall-clock limit.
         """
-        with ReceiptStore(job.receipt_path) as store:
-            store.recover(self._containers)
-            receipt = self._containers.reserve(job.spec)
-            store.save(receipt)
-            identity = None
-            primary = None
-            needs_cleanup = True
+        if cancelled is not None and cancelled.is_set():
+            raise JobCancelledError("cancel container job before dispatch")
+        request = ContainerSession(
+            spec=job.spec, limits=job.limits, receipt_path=job.receipt_path
+        )
+        with (
+            Sessions(self._containers, self._execution).open(request) as session,
+            session.stop_on(cancelled.is_set if cancelled is not None else None),
+        ):
             try:
-                try:
-                    identity = self._containers.create(job.spec, receipt)
-                except CreationUnconfirmedError:
-                    raise
-                except DockerOperationError as error:
-                    # Containers.create only returns other typed errors when the
-                    # request was not sent or was definitively rejected.
-                    needs_cleanup = False
-                    try:
-                        store.discard_unstarted(receipt)
-                    except CleanupUnconfirmedError as cleanup:
-                        cleanup.primary = error
-                        raise
-                    raise
                 stdout, stderr = bytearray(), bytearray()
-                with self._execution.attach(identity, job.limits) as stream:
-                    self._containers.start(identity)
-                    while frame := stream.read_frame():
-                        (stdout if frame.channel == "stdout" else stderr).extend(
-                            frame.data
-                        )
-                status = self._containers.wait(
-                    identity, timeout=job.wait_timeout_seconds
-                )
+                while (frame := session.read_frame()) is not None:
+                    (stdout if frame.channel == "stdout" else stderr).extend(frame.data)
+                if cancelled is not None and cancelled.is_set():
+                    raise JobCancelledError("cancel container job")
+                status = session.wait(timeout=job.wait_timeout_seconds)
+                if cancelled is not None and cancelled.is_set():
+                    raise JobCancelledError("cancel container job")
                 return CommandResult(
                     exit_code=status, stdout=bytes(stdout), stderr=bytes(stderr)
                 )
-            except DockerOperationError as error:
-                primary = error
+            except DockerOperationError:
+                if cancelled is not None and cancelled.is_set():
+                    raise JobCancelledError("cancel container job") from None
                 raise
             except Exception:
-                primary = DockerOperationError("run one-shot container")
-                raise primary from None
-            finally:
-                if needs_cleanup:
-                    try:
-                        store.cleanup(self._containers, receipt, identity)
-                    except CleanupUnconfirmedError as error:
-                        error.primary = primary
-                        raise error from None
+                raise DockerOperationError("run one-shot container") from None

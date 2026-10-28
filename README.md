@@ -32,6 +32,91 @@ before `create(spec, reservation)`. A `CreationUnconfirmedError` also carries
 its private receipt. Reconcile that receipt before retrying; a timeout may mean
 Docker created the resource. Volume create errors likewise retain a receipt.
 
+## Interactive container sessions
+
+`client.sessions.open(ContainerSession(spec=spec, limits=limits,
+receipt_path=private_state.joinpath("session.json")))` returns a creator-owned
+`Session`. Supply an immutable image ID, explicit stream limits and an existing
+private state directory. Set `stdin_open=True` only when the caller writes input;
+output-only services leave it false. Creation attaches both output channels and
+optional stdin before starting the container. `write(bytes)` sends stdin;
+`read_frame()` returns undecoded stdout/stderr frames. One reader and serialized
+writers share the original lifetime and combined byte budget.
+
+`read_line()` is an alternative to frame mode: it preserves channel and newline
+bytes, buffers split frames, and returns final unterminated output before EOF.
+Choose one mode per session; decoding and application protocols remain with the
+caller. `exited()` checks process state after EOF and rejects a still-running
+process rather than reporting success. Closing on the creator thread removes the
+exact container before detaching and unblocks a concurrent reader.
+
+`client.containers.watch(reservation)` supervises an exact private reservation on
+that client's endpoint. `inspect()` returns safe observation categories;
+`cleanup(watch_seconds=...)` removes only verified immutable IDs. A loss watch
+that never observes a container remains unverified even if the name is absent.
+It never resolves an unknown create through a timed-absence shortcut.
+
+`state()` returns a validated `ContainerState`; removal never invents an exit
+code. `wait(timeout)` confirms exit independently. `terminate()` may run from
+another thread and removes only the verified immutable ID. It deliberately
+leaves the receipt for `close()` on the creator thread, which confirms removal,
+clears intent, detaches and releases its native lock. Keep the Client open for
+the entire session. Closing an attachment alone never establishes termination.
+`session.cleanup_confirmed` becomes true only after creator-thread removal,
+receipt clearing and stream closure all succeed. Application supervision can
+reuse that confirmation instead of issuing a second normal-path cleanup.
+If close fails, subsequent close calls re-raise the saved safe failure; they do
+not turn that attempt into a silent success or issue duplicate cleanup requests.
+
+Job and session receipts include the original resolved daemon endpoint. Recovery
+refuses missing or mismatched endpoint information before inspecting or removing
+anything, retaining the receipt. Legacy records without endpoint provenance
+require explicit host reconciliation; the library never guesses the daemon or
+silently fills in missing provenance. Use the original endpoint for recovery.
+
+`ContainerSpec` also supports an init process, a CPU quota in nanocpus, explicit
+host aliases and loopback-only published ports such as `ports={"4096/tcp": None}`.
+These options are checked against creation readback. After start,
+`client.containers.published_port(session.identity, "4096/tcp")` returns the
+observed host port only when the exact owned container has one IPv4 loopback
+binding. Wildcard and externally reachable bindings are refused.
+
+Windows named pipes cannot half-close stdin while retaining output. For commands
+that require EOF, callers can bind a private input file read-only and redirect
+stdin inside their explicit command. The library does not interpret input files
+or introduce a shell. Never put request contents or credentials in command args.
+
+`client.jobs.run(job, cancelled=stop_event)` optionally accepts a caller-owned
+`threading.Event`. Setting it stops the job's observed owned container; it does
+not wait for the command's own deadline or undo earlier effects. The creator
+thread confirms cleanup through the same Session lifecycle. A confirmed stop
+raises `JobCancelledError`; uncertain cleanup retains the receipt and takes
+precedence as `CleanupUnconfirmedError`. Pre-cancelled jobs send no launch.
+A stop racing process completion wins if it is observed before `run` returns;
+this conservative outcome never means that earlier effects were undone.
+
+After verified creation, jobs and sessions atomically record the observed
+immutable ID in their private receipt. Recovery can then safely accept that ID's
+confirmed absence, including removal by an independent application supervisor.
+Legacy intent-only records remain readable and retain conservative unknown-create
+handling. Failed observation persistence retains the earlier intent. Applications
+must recover per-run receipts on the original endpoint before dispatching anew.
+
+`ContainerSpec.mounts` supports typed bind and named-volume `Mount` records. These
+use Docker's explicit Mounts API and check bind sources on the client host before
+dispatch: a missing source is refused rather than silently created by Docker
+Desktop. These mounts require local client-visible sources, including when an
+explicit remote endpoint is selected. Callers own source-directory stability
+between validation and dispatch. Existing `volumes` retains its original bind
+semantics. Interactive stdin uses SDK attached-stdin defaults, verified by
+`OpenStdin` and `StdinOnce` readback; no independent half-close API is promised.
+Readback permits an omitted false `ReadOnly` and, only on the local Windows
+named-pipe adapter, Docker Desktop's `/run/desktop/mnt/host/<drive>/...` spelling
+of the same absolute Windows source. Other source/target/permission changes and
+additional mount options remain failures; remote endpoints do not get this path
+translation. Real missing-source and external-removal recovery checks complement
+the internal normalization controls.
+
 ## One-shot container jobs
 
 `client.execution.run` executes inside an existing owned container.
@@ -108,12 +193,20 @@ responses and all post-create readback failures remain uncertain. No error-text
 parsing or whole-status-family inference is used. The contract follows the
 [Docker create API](https://docs.docker.com/reference/api/engine/version/v1.51/).
 
-This `0.1.0a2` local-trial increment adds `filelock` as a runtime dependency for
+This `0.1.0a3` local-trial increment retains `filelock` as a runtime dependency for
 native inter-process exclusion; there is no custom platform lock implementation.
 
 ## Connection and lifecycle boundaries
 Operation phase text is diagnostic wording, not a stable API; use exception
 types and their machine `code` for programmatic handling.
+`Images.resolve` raises `ImageResolutionError` when local inspection fails,
+without claiming that the image is missing. An observed pin mismatch remains
+`OwnershipConflictError`. Neither operation pulls or launches a container.
+`session.stop_on(predicate)` shares the exact-ID stop monitor with one-shot
+jobs. The caller decides when to stop and how that affects its workflow. The
+monitor never clears a receipt; close stays on the creator thread and confirms
+cleanup. A predicate failure stops the container and produces a safe library
+error, while an existing body failure and uncertain cleanup keep precedence.
 Container creation disables Docker config proxy injection and reads back the
 requested sandbox, process configuration, bind mounts and environment.
 
