@@ -14,11 +14,11 @@ from py_docker.containers.models import (
     Mount,
 )
 from py_docker.containers.receipts import ReceiptStore
+from py_docker.containers.watch import ContainerWatch
 from py_docker.errors import CleanupUnconfirmedError, DockerOperationError
 from py_docker.sessions.models import ContainerSession
 from py_docker.sessions.service import Sessions
 from py_docker.sessions.session import Session
-from py_docker.containers.watch import ContainerWatch
 from py_docker.streams.models import Frame, StreamLimits
 
 
