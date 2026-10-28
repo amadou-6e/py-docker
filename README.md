@@ -17,7 +17,7 @@ with Client() as client:
     )
     try:
         client.containers.start(identity)
-        result = client.sdk.containers.get(identity.id).wait(timeout=30)
+        exit_code = client.containers.wait(identity, timeout=30)
     finally:
         client.containers.remove(identity, force=True)
 ```
@@ -31,6 +31,87 @@ For recoverable creation, call `reservation = client.containers.reserve(spec)`
 before `create(spec, reservation)`. A `CreationUnconfirmedError` also carries
 its private receipt. Reconcile that receipt before retrying; a timeout may mean
 Docker created the resource. Volume create errors likewise retain a receipt.
+
+## One-shot container jobs
+
+`client.execution.run` executes inside an existing owned container.
+`client.jobs.run` creates and removes a separate one-shot container, returning
+binary stdout/stderr and a confirmed exit code after cleanup. Supply an
+immutable local image ID, noninteractive `ContainerSpec`, explicit stream and
+wait limits, and a receipt path inside an existing private runtime directory:
+
+```python
+from pathlib import Path
+
+from py_docker import Client
+from py_docker.containers.models import ContainerSpec
+from py_docker.jobs.models import ContainerJob
+from py_docker.streams.models import StreamLimits
+
+private_state = Path(
+    "/existing/private/runtime"
+)  # Replace with your private state directory.
+with Client() as client:
+    image_id = client.images.resolve("your-locally-installed-image")
+    result = client.jobs.run(
+        ContainerJob(
+            spec=ContainerSpec(
+                image=image_id, name="unique-job-name", command=["python", "--version"]
+            ),
+            limits=StreamLimits(seconds=20, max_bytes=65536),
+            receipt_path=private_state.joinpath("job.json"),
+            wait_timeout_seconds=20,
+        )
+    )
+```
+
+Image/version authorization stays with the application; call `images.resolve`
+with its `expected_id` when a tag must match an application pin. Jobs never pull
+or retry creation, reject interactive stdin/TTY requests, attach before start,
+and count both output channels against one budget. API, stream and wait limits
+are separate; there is no total wall-clock deadline. A nonzero exit is returned
+as a result. A timeout/output-limit error still triggers exact forced cleanup.
+
+Receipt files contain private ownership labels. Normal model dumps omit them;
+`to_private_record`/`from_private_record` are explicitly private conversions.
+The store creates no directories and writes exclusively with POSIX mode 0600;
+Windows privacy relies on the caller's directory ACLs. A native inter-process
+file lock covers recovery, execution and cleanup. Concurrent use fails with
+`ReceiptInUseError` before changing any receipt or sending a job operation;
+the empty sibling `.lock` file may remain and must not be deleted during use.
+Unsupported soft-lock backends and symlink receipt/lock paths are refused.
+Lock contention is a separate `DockerOperationError`, not cleanup uncertainty:
+the other caller may still be running. One store belongs to one thread.
+
+Call `client.jobs.recover(receipt_path)` to reconcile an earlier job explicitly;
+`run` also recovers before reserving a new job. No receipt is a no-op. An observed
+matching owned ID is removed before its receipt is cleared. Absence after an
+uncertain create does not prove an old request cannot arrive later, so absence,
+conflict, corrupt records and daemon uncertainty retain the receipt and raise
+`CleanupUnconfirmedError`. That error overrides a safe primary execution error,
+available in `error.primary`; neither output, paths nor raw daemon text are
+included in library messages. A receipt-unlink failure also fails conservatively.
+
+For manual recovery, stop the original client and keep its selected endpoint.
+Resolve outstanding create requests before clearing anything; if that cannot
+be proved, a local engine restart must be coordinated with other active work.
+Then inspect the saved name and labels privately, remove only a matching owned
+immutable ID, and clear the receipt only after confirmed absence with no pending
+create. Never log/share ownership labels, delete a live lock file or blindly
+retry a job. These are local single-owner receipts, not a distributed supervisor.
+
+Typed pre-request failures clear only their own unstarted receipt. The create
+endpoint's documented 400 (bad parameter), 404 (missing image) and 409 (conflict)
+responses raise `CreationRejectedError` and also clear that intent without
+deleting any existing resource. Timeout, throttling, server errors, unknown
+responses and all post-create readback failures remain uncertain. No error-text
+parsing or whole-status-family inference is used. The contract follows the
+[Docker create API](https://docs.docker.com/reference/api/engine/version/v1.51/).
+
+This `0.1.0a2` local-trial increment adds `filelock` as a runtime dependency for
+native inter-process exclusion; there is no custom platform lock implementation.
+
+## Connection and lifecycle boundaries
 Operation phase text is diagnostic wording, not a stable API; use exception
 types and their machine `code` for programmatic handling.
 Container creation disables Docker config proxy injection and reads back the

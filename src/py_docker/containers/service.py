@@ -1,9 +1,10 @@
 """Creation and cleanup restricted to exact owned container IDs."""
 
+import math
 import uuid
 
 from docker import DockerClient
-from docker.errors import DockerException, NotFound
+from docker.errors import APIError, DockerException, NotFound
 from docker.models.containers import Container
 from docker.models.images import Image
 from docker.utils import convert_volume_binds, parse_bytes
@@ -14,7 +15,9 @@ from py_docker.containers.models import (
     ContainerReservation,
     ContainerSpec,
 )
+from py_docker.containers.settings import DEFINITIVE_CREATE_REJECTIONS
 from py_docker.errors import (
+    CreationRejectedError,
     CreationUnconfirmedError,
     DockerOperationError,
     OwnershipConflictError,
@@ -108,6 +111,9 @@ class Containers:
             The local image could not be resolved; no create request was sent.
         CreationUnconfirmedError
             Creation or readback is unconfirmed; reconcile the attached receipt before retrying.
+        CreationRejectedError
+            The create endpoint returned a definitive bad-parameter, missing-image
+            or conflict response. No container was created by this request.
         """
         receipt = reservation or self.reserve(spec)
         if receipt.name != spec.name:
@@ -128,7 +134,12 @@ class Containers:
             raise DockerOperationError("resolve container image") from None
         phase = "create container"
         try:
-            container = self.sdk.containers.create(image.id, **options)
+            try:
+                container = self.sdk.containers.create(image.id, **options)
+            except APIError as error:
+                if error.status_code in DEFINITIVE_CREATE_REJECTIONS:
+                    raise CreationRejectedError("create container", receipt) from None
+                raise
             phase = "validate container receipt"
             identity = ContainerIdentity(id=container.id, name=spec.name, labels=labels)
             phase = "verify container ownership"
@@ -137,6 +148,8 @@ class Containers:
                 raise DockerOperationError("confirm newly created container exists")
             self._verify_launch(owned, spec, image)
             return identity
+        except CreationRejectedError:
+            raise
         except Exception as error:
             if isinstance(error, DockerOperationError):
                 phase = error.operation
@@ -203,6 +216,58 @@ class Containers:
             container.start()
         except (DockerException, RequestException):
             raise DockerOperationError("start container") from None
+
+    def wait(self, identity: ContainerIdentity, *, timeout: float) -> int:
+        """Wait for an owned container's exit and validate its confirmed status.
+
+        Parameters
+        ----------
+        identity : ContainerIdentity
+            Immutable ID and expected name/labels checked before the wait request.
+        timeout : float
+            Positive finite request timeout in seconds, separate from stream limits.
+
+        Returns
+        -------
+        int
+            Confirmed process exit code; nonzero values are returned unchanged.
+
+        Raises
+        ------
+        ValueError
+            The timeout is not a positive finite number.
+        OwnershipConflictError
+            The resource does not match the expected ownership; no wait was requested.
+        DockerOperationError
+            Inspection, wait transport, absence or malformed status prevents confirmation.
+        """
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not math.isfinite(timeout)
+            or timeout <= 0
+        ):
+            raise ValueError("Wait timeout must be positive and finite")
+        container = self.inspect(identity)
+        if container is None:
+            raise DockerOperationError("wait for missing container")
+        try:
+            result = container.wait(timeout=timeout)
+            if (
+                not isinstance(result, dict)
+                or type(result.get("StatusCode")) is not int
+            ):
+                raise DockerOperationError("confirm container exit status")
+            return result["StatusCode"]
+        except (
+            DockerException,
+            RequestException,
+            TimeoutError,
+            TypeError,
+            KeyError,
+            AttributeError,
+        ):
+            raise DockerOperationError("wait for container exit") from None
 
     def remove(
         self,
