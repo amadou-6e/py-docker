@@ -13,7 +13,10 @@ from py_docker.streams.socket import AttachedStream
 
 def test_binary_demux_and_clean_eof():
     reader, writer = socket.socketpair()
-    with writer, AttachedStream(reader, StreamLimits(max_bytes=10, seconds=1)) as stream:
+    with (
+        writer,
+        AttachedStream(reader, StreamLimits(max_bytes=10, seconds=1)) as stream,
+    ):
         writer.sendall(struct.pack(">BxxxI", 2, 3) + b"\0\xff\n")
         frame = stream.read_frame()
         assert frame.channel == "stderr"
@@ -32,7 +35,10 @@ def test_size_rejected_before_payload_read():
 
 def test_stalled_read_has_deadline():
     reader, writer = socket.socketpair()
-    with writer, AttachedStream(reader, StreamLimits(max_bytes=20, seconds=0.1)) as stream:
+    with (
+        writer,
+        AttachedStream(reader, StreamLimits(max_bytes=20, seconds=0.1)) as stream,
+    ):
         started = time.monotonic()
         with pytest.raises(DeadlineError):
             stream.read_frame()
@@ -41,7 +47,10 @@ def test_stalled_read_has_deadline():
 
 def test_truncated_frame_is_not_eof():
     reader, writer = socket.socketpair()
-    with writer, AttachedStream(reader, StreamLimits(max_bytes=20, seconds=1)) as stream:
+    with (
+        writer,
+        AttachedStream(reader, StreamLimits(max_bytes=20, seconds=1)) as stream,
+    ):
         writer.sendall(struct.pack(">BxxxI", 1, 5) + b"xx")
         writer.shutdown(socket.SHUT_WR)
         with pytest.raises(DockerOperationError):

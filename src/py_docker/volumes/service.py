@@ -5,7 +5,11 @@ import uuid
 from docker.errors import DockerException, NotFound
 from requests.exceptions import RequestException
 
-from py_docker.errors import CreationUnconfirmedError, DockerOperationError, OwnershipConflictError
+from py_docker.errors import (
+    CreationUnconfirmedError,
+    DockerOperationError,
+    OwnershipConflictError,
+)
 from py_docker.volumes.models import VolumeIdentity
 
 
@@ -37,7 +41,10 @@ class Volumes:
         except (DockerException, RequestException):
             raise DockerOperationError("inspect volume") from None
         actual = volume.attrs.get("Labels") or {}
-        if any(actual.get(key) != value.get_secret_value() for key, value in identity.labels.items()):
+        if any(
+            actual.get(key) != value.get_secret_value()
+            for key, value in identity.labels.items()
+        ):
             raise OwnershipConflictError("verify volume ownership")
         return volume
 

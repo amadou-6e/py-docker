@@ -1,7 +1,7 @@
 """Docker multiplexed frames with deadlines including partial reads/writes."""
 
-import struct
 import os
+import struct
 import threading
 import time
 
@@ -24,35 +24,15 @@ class AttachedStream:
         self._write_lock = threading.Lock()
         self._closed = False
 
-    def _remaining(self) -> float:
-        remaining = self.deadline - time.monotonic()
-        if remaining <= 0:
-            raise DeadlineError("read/write container stream")
-        return remaining
+    def __enter__(self):
+        return self
 
-    def _read(self, size: int, *, allow_eof: bool = False) -> bytes:
-        result = bytearray(size)
-        offset = 0
-        while offset < size:
-            try:
-                self.socket.settimeout(self._remaining())
-                count = self.socket.recv_into(memoryview(result)[offset:], size - offset)
-            except TimeoutError:
-                raise DeadlineError("read container stream") from None
-            except DockerOperationError:
+    def __exit__(self, *_):
+        try:
+            self.close()
+        except DockerOperationError:
+            if _[0] is None:
                 raise
-            except Exception as error:
-                # Docker closes a completed exec stream with ERROR_BROKEN_PIPE
-                # on Windows. Only a frame-boundary close is a clean EOF.
-                if os.name == "nt" and getattr(error, "winerror", None) == 109 and offset == 0 and allow_eof:
-                    return b""
-                raise DockerOperationError("read container stream") from None
-            if not count:
-                if offset == 0 and allow_eof:
-                    return b""
-                raise DockerOperationError("read complete container frame")
-            offset += count
-        return bytes(result)
 
     def read_frame(self) -> Frame | None:
         header = self._read(8, allow_eof=True)
@@ -64,7 +44,9 @@ class AttachedStream:
         if size > self.remaining_bytes:
             raise OutputLimitError("read container stream")
         self.remaining_bytes -= size
-        return Frame(channel="stdout" if channel == 1 else "stderr", data=self._read(size))
+        return Frame(
+            channel="stdout" if channel == 1 else "stderr", data=self._read(size)
+        )
 
     def write(self, data: bytes) -> None:
         # SDK NpipeSocket.sendall does not loop partial writes; do so explicitly.
@@ -102,12 +84,39 @@ class AttachedStream:
             if failures:
                 raise DockerOperationError("close container stream") from None
 
-    def __enter__(self):
-        return self
+    def _remaining(self) -> float:
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise DeadlineError("read/write container stream")
+        return remaining
 
-    def __exit__(self, *_):
-        try:
-            self.close()
-        except DockerOperationError:
-            if _[0] is None:
+    def _read(self, size: int, *, allow_eof: bool = False) -> bytes:
+        result = bytearray(size)
+        offset = 0
+        while offset < size:
+            try:
+                self.socket.settimeout(self._remaining())
+                count = self.socket.recv_into(
+                    memoryview(result)[offset:], size - offset
+                )
+            except TimeoutError:
+                raise DeadlineError("read container stream") from None
+            except DockerOperationError:
                 raise
+            except Exception as error:
+                # Docker closes a completed exec stream with ERROR_BROKEN_PIPE
+                # on Windows. Only a frame-boundary close is a clean EOF.
+                if (
+                    os.name == "nt"
+                    and getattr(error, "winerror", None) == 109
+                    and offset == 0
+                    and allow_eof
+                ):
+                    return b""
+                raise DockerOperationError("read container stream") from None
+            if not count:
+                if offset == 0 and allow_eof:
+                    return b""
+                raise DockerOperationError("read complete container frame")
+            offset += count
+        return bytes(result)

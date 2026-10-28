@@ -8,7 +8,9 @@ class DockerOperationError(RuntimeError):
 
     def __init__(self, operation: str):
         self.operation = operation
-        super().__init__(f"Docker could not complete {operation}; verify the resource state.")
+        super().__init__(
+            f"Docker could not complete {operation}; verify the resource state."
+        )
 
 
 class ConnectionConfigurationError(DockerOperationError):

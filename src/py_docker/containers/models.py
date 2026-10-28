@@ -13,7 +13,9 @@ class ContainerSpec(BaseModel):
     entrypoint: list[str] | None = None
     user: str | None = None
     working_dir: str | None = None
-    environment: dict[str, SecretStr] = Field(default_factory=dict, repr=False, exclude=True)
+    environment: dict[str, SecretStr] = Field(
+        default_factory=dict, repr=False, exclude=True
+    )
     labels: dict[str, SecretStr] = Field(default_factory=dict, repr=False, exclude=True)
     volumes: dict[str, dict[str, str]] = Field(default_factory=dict)
     network_mode: str = "none"
