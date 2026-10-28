@@ -28,6 +28,8 @@ For recoverable creation, call `reservation = client.containers.reserve(spec)`
 before `create(spec, reservation)`. A `CreationUnconfirmedError` also carries
 its private receipt. Reconcile that receipt before retrying; a timeout may mean
 Docker created the resource. Volume create errors likewise retain a receipt.
+Operation phase text is diagnostic wording, not a stable API; use exception
+types and their machine `code` for programmatic handling.
 Container creation disables Docker config proxy injection and reads back the
 requested sandbox, process configuration, bind mounts and environment.
 
