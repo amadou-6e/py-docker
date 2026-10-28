@@ -1,154 +1,73 @@
-# py-dockerdb
+# py-docker
 
-*Pythonic Docker database management for notebooks, tutorials, and fast MVPs.*
-
-[![Build](https://img.shields.io/github/actions/workflow/status/amadou-6e/docker-db/cicd.yml?branch=main&label=tests)](https://github.com/amadou-6e/docker-db/actions/workflows/cicd.yml)
-[![PyPI](https://img.shields.io/pypi/v/py-dockerdb)](https://pypi.org/project/py-dockerdb/)
-[![License](https://img.shields.io/badge/license-MIT-lightgrey)](./LICENSE)
-[![Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://amadou-6e.github.io/py-docker/introduction.html)
-
-```bash
-pip install py-dockerdb
-```
-
-`py-dockerdb` gives you one Python API to create, connect, and clean up Docker
-databases: PostgreSQL, MySQL, MongoDB, MSSQL, Redis, Neo4j, and Ollama. It is built
-for people who teach, demo, and prototype with notebooks and need repeatable local
-databases in seconds.
-
-Switch from PostgreSQL to MongoDB without changing a line of connection code. Test
-a pgvector RAG pipeline, then swap to Neo4j for GraphRAG with one config change.
-Or hand every student a pre-seeded database at the start of class without touching
-Docker on their machine.
-
-## When to use this
-
-- **Teaching a SQL workshop:** two lines give every learner a working, pre-seeded
-  database, identical across Windows/Mac/Linux.
-- **Comparing databases for an MVP:** run Postgres, MongoDB, Redis, and Neo4j
-  through the same interface and pick based on behaviour, not setup time.
-- **Local RAG prototype:** spin up pgvector, validate retrieval, swap to another
-  backend in one config change without touching orchestration code.
-- **GraphRAG with Neo4j:** `Neo4jDB.connection` returns a `neo4j.Driver` that
-  plugs directly into LlamaIndex's `Neo4jGraphStore` and LangChain's `Neo4jGraph`.
-
-## Supported Databases
-
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/docs/)
-[![MySQL](https://img.shields.io/badge/MySQL-4479A1?logo=mysql&logoColor=white)](https://dev.mysql.com/doc/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/docs/)
-[![SQL Server](https://img.shields.io/badge/SQL_Server-CC2927?logo=microsoftsqlserver&logoColor=white)](https://learn.microsoft.com/en-us/sql/sql-server/)
-[![Redis](https://img.shields.io/badge/Redis-DC382D?logo=redis&logoColor=white)](https://redis.io/docs/)
-[![Neo4j](https://img.shields.io/badge/Neo4j-008CC1?logo=neo4j&logoColor=white)](https://neo4j.com/docs/)
-[![Ollama](https://img.shields.io/badge/Ollama-000000?logo=ollama&logoColor=white)](https://ollama.com/library)
-
-## Prerequisites
-
-- Python 3.10+ · Docker running
-
-## Installation
-
-```bash
-pip install py-dockerdb                # core
-pip install "py-dockerdb[graph]"       # + Neo4j / LlamaIndex / LangChain
-pip install "py-dockerdb[rag]"         # + pgvector / LlamaIndex
-```
-
-## Usage
-
-Define a config, call `create_db()`, run your workload, tear down with `delete_db()`.
-
-### PostgreSQL
+General Docker container lifecycle for Python, built on the official Docker SDK.
+Development prerelease: not yet published or approved for Laomedo adoption.
 
 ```python
-from docker_db.dbs.postgres_db import PostgresConfig, PostgresDB
+from py_docker import Client
+from py_docker.containers.models import ContainerSpec
 
-db = PostgresDB(PostgresConfig(user="u", password="p", database="d", project_name="demo"))
-db.create_db()
-conn = db.connection          # psycopg2 connection
-cur = conn.cursor()
-cur.execute("SELECT version();")
-print(cur.fetchone())
-db.delete_db(running_ok=True)
+with Client() as client:
+    identity = client.containers.create(
+        ContainerSpec(
+            image="your-locally-installed-image",
+            name="example-job",
+            command=["python", "--version"],
+        )
+    )
+    try:
+        client.containers.start(identity)
+        result = client.sdk.containers.get(identity.id).wait(timeout=30)
+    finally:
+        client.containers.remove(identity, force=True)
 ```
 
+Creation resolves a local image to its immutable ID; it never pulls, builds or
+replaces an existing named container. Removal validates ID, name and ownership
+labels. The SDK remains available as `client.sdk` for other Engine operations;
+operations through that escape hatch have the SDK's own contracts.
 
-### Neo4j / GraphRAG
+For recoverable creation, call `reservation = client.containers.reserve(spec)`
+before `create(spec, reservation)`. A `CreationUnconfirmedError` also carries
+its private receipt. Reconcile that receipt before retrying; a timeout may mean
+Docker created the resource. Volume create errors likewise retain a receipt.
+Operation phase text is diagnostic wording, not a stable API; use exception
+types and their machine `code` for programmatic handling.
+Container creation disables Docker config proxy injection and reads back the
+requested sandbox, process configuration, bind mounts and environment.
 
-```python
-from docker_db.dbs.neo4j_db import Neo4jConfig, Neo4jDB
+Connection selection: explicit endpoint, explicit context, DOCKER_CONTEXT or
+DOCKER_HOST, active CLI context, platform default if Docker CLI is absent.
+Simultaneous DOCKER_CONTEXT and DOCKER_HOST environment settings are rejected
+unless the caller selects an explicit endpoint/context. This avoids relying on
+different CLI/SDK versions' precedence behavior during a mixed migration.
+The selected endpoint is exposed as `client.connection`. Remote plain TCP needs
+the explicit `Client(allow_remote=True)` argument; an environment variable cannot
+grant that permission. `Client(environment=snapshot)` isolates library settings
+from the ambient process environment. TLS and SSH are currently rejected rather
+than silently ignored. Context
+resolution uses read-only `docker context inspect`; container operations use
+the SDK. Credential copying is application policy and is not implemented here.
 
-db = Neo4jDB(Neo4jConfig(password="p", project_name="demo"))
-db.create_db()
-driver = db.connection        # neo4j.Driver -> hand to Neo4jGraphStore or Neo4jGraph
-with driver.session() as s:
-    s.run("CREATE (n:Person {name: 'Alice'})")
-    print(s.run("MATCH (n:Person) RETURN n.name").single()[0])
-db.delete_db(running_ok=True)
-```
+Database helpers and the existing `docker_db` API live in
+https://github.com/amadou-6e/pydocker-db. They are separate dependencies.
 
-### Ollama
+Attach and exec return binary frames with output limits and monotonic stream
+deadlines. API acquisition/inspection has a separate client timeout; this is not
+an end-to-end command deadline. Closing an attach socket does not stop the
+container, and there is no cross-platform stdin half-close guarantee. Fresh,
+unique volume creation verifies its ownership token; generic volume deletion is
+not exposed because volumes lack immutable IDs. Applications own credential
+selection, lease supervision and recovery UI.
 
-```python
-from docker_db.dbs.ollama_db import OllamaConfig, OllamaDB
+Container removal preserves anonymous volumes by default. Opt in to removing
+them with `remove_anonymous_volumes=True` for an exclusively owned container.
+Suppressed exception chains remain available in memory via Python's exception
+context; only safe library messages should be presented or logged.
 
-db = OllamaDB(OllamaConfig(project_name="demo"))
-db.create_db()
-session = db.connection       # requests.Session
-db.pull_model("llama3")
-resp = session.post(f"{db.base_url}/api/generate", json={"model": "llama3", "prompt": "Hello", "stream": False})
-print(resp.json()["response"])
-db.delete_db(running_ok=True)
-```
-
-### More examples
-
-Full runnable notebooks are in [`usage/`](./usage/):
-
-[PostgreSQL](./usage/postgres_example.ipynb) · [MySQL](./usage/mysql_example.ipynb)
-· [MongoDB](./usage/mongo_example.ipynb) · [MSSQL](./usage/mssql_example.ipynb)
-· [Redis](./usage/redis_example.ipynb) · [Neo4j / GraphRAG](./usage/neo4j_example.ipynb)
-· [pgvector RAG](./usage/pgvector_rag_example.ipynb) · [Lifecycle](./usage/db_management_example.ipynb)
-
-## Roadmap
-
-- [x] PostgreSQL + `pgvector`
-- [x] Neo4j
-- [x] Qdrant
-- [ ] Chroma
-- [ ] Weaviate
-- [ ] Milvus
-
-## Development
-
-```bash
-git clone https://github.com/amadou-6e/docker-db.git
-cd docker-db
-pip install -e ".[test]"
-```
-
-## Testing
-
-```bash
-python -m pytest -vv -s tests/test_manager.py
-python -m pytest -vv -s tests/test_postgres.py
-python -m pytest -vv -s tests/test_postgres_pgvector.py
-python -m pytest -vv -s tests/test_mysql.py
-python -m pytest -vv -s tests/test_mongodb.py
-python -m pytest -vv -s tests/test_mssql.py
-python -m pytest -vv -s tests/test_redis.py
-python -m pytest -vv -s tests/test_cassandra.py
-python -m pytest -vv -s tests/test_neo4j.py
-python -m pytest -vv -s tests/test_opensearch.py
-python -m pytest -vv -s tests/test_qdrant.py
-python -m pytest -vv -s tests/test_ollama.py
-python -m pytest -vv -s tests/test_notebooks.py
-```
-
-## Contributing
-
-PRs welcome. Include tests for behaviour changes and keep notebooks runnable.
-
-## License
-
-MIT License. See `LICENSE`.
+Archive helpers and an end-to-end command deadline are outside this first
+prerelease: use SDK APIs with their own contracts until dedicated wrappers are
+reviewed. Library stream and cleanup tests do not establish agent acceptance.
+The Python
+import `py_docker` does not shadow the official SDK's `docker` import. A missing
+PyPI project page does not guarantee name registration.
