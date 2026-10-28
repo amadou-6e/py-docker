@@ -65,6 +65,8 @@ the entire session. Closing an attachment alone never establishes termination.
 `session.cleanup_confirmed` becomes true only after creator-thread removal,
 receipt clearing and stream closure all succeed. Application supervision can
 reuse that confirmation instead of issuing a second normal-path cleanup.
+If close fails, subsequent close calls re-raise the saved safe failure; they do
+not turn that attempt into a silent success or issue duplicate cleanup requests.
 
 Job and session receipts include the original resolved daemon endpoint. Recovery
 refuses missing or mismatched endpoint information before inspecting or removing

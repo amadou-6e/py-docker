@@ -50,6 +50,7 @@ class Session:
         self._termination_lock = threading.Lock()
         self._closed = False
         self._cleanup_confirmed = False
+        self._close_error: DockerOperationError | None = None
         self._read_mode = None
         self._eof = False
         self._line_buffers = {"stdout": bytearray(), "stderr": bytearray()}
@@ -199,6 +200,8 @@ class Session:
         if threading.get_ident() != self._creator:
             raise DockerOperationError("close session on its creator thread")
         if self._closed:
+            if self._close_error is not None:
+                raise self._close_error
             return
         error = None
         try:
@@ -217,6 +220,7 @@ class Session:
                 error = error or failure
             self._closed = True
             self._cleanup_confirmed = error is None
+            self._close_error = error
         if error is not None:
             raise error
 

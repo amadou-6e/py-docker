@@ -26,6 +26,23 @@ from py_docker.sessions.session import Session
 from py_docker.streams.models import Frame, StreamLimits
 
 
+def test_repeated_failed_close_never_becomes_a_silent_success():
+    """A failed close retains its safe error without issuing another cleanup."""
+    from unittest.mock import MagicMock
+
+    store, stream = MagicMock(), Mock()
+    failure = CleanupUnconfirmedError("internal cleanup uncertainty")
+    store.cleanup.side_effect = failure
+    session = Session(Mock(), store, Mock(), Mock(), stream)
+    for _ in range(2):
+        with pytest.raises(CleanupUnconfirmedError) as caught:
+            session.close()
+        assert caught.value is failure
+        assert not session.cleanup_confirmed
+    store.cleanup.assert_called_once()
+    stream.close.assert_called_once()
+
+
 def test_lines_preserve_channels_partial_utf8_and_final_bytes():
     """Binary framing never decodes partial characters or joins channels."""
     stream = Mock()
