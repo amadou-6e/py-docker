@@ -7,6 +7,9 @@ from py_docker.connection.resolver import ConnectionResolver
 from py_docker.connection.settings import ConnectionSettings
 from py_docker.containers.service import Containers
 from py_docker.errors import DockerOperationError
+from py_docker.execution.service import Execution
+from py_docker.images.service import Images
+from py_docker.volumes.service import Volumes
 
 
 class Client:
@@ -20,6 +23,9 @@ class Client:
         except DockerException:
             raise DockerOperationError("connect to Docker") from None
         self.containers = Containers(self.sdk)
+        self.images = Images(self.sdk)
+        self.volumes = Volumes(self.sdk)
+        self.execution = Execution(self.sdk)
 
     def ping(self) -> bool:
         try:
