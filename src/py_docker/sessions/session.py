@@ -2,6 +2,8 @@
 
 import threading
 from collections import deque
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 
 from py_docker.containers.models import (
     ContainerIdentity,
@@ -11,6 +13,7 @@ from py_docker.containers.models import (
 from py_docker.containers.receipts import ReceiptStore
 from py_docker.containers.service import Containers
 from py_docker.errors import CleanupUnconfirmedError, DockerOperationError
+from py_docker.sessions import settings
 from py_docker.streams.models import Frame, Line
 from py_docker.streams.socket import AttachedStream
 
@@ -186,6 +189,65 @@ class Session:
         """
         with self._termination_lock:
             self._containers.remove(self.identity, force=True)
+
+    @contextmanager
+    def stop_on(self, requested: Callable[[], bool] | None) -> Iterator[None]:
+        """Monitor a caller's stop policy without moving receipt ownership.
+
+        Parameters
+        ----------
+        requested : Callable[[], bool] or None
+            Fast nonblocking predicate; None starts no thread. The caller owns
+            cancellation/deadline policy and interprets its resulting run status.
+
+        Yields
+        ------
+        None
+            A scope whose monitor terminates only this session's owned ID.
+
+        Raises
+        ------
+        DockerOperationError
+            Monitor startup or predicate evaluation failed. An existing body
+            failure is preserved. Creator-thread close remains authoritative
+            for receipt/stream cleanup and overrides uncertain termination.
+        """
+        if threading.get_ident() != self._creator:
+            raise DockerOperationError("monitor session on its creator thread")
+        if requested is None:
+            yield
+            return
+        stopped = threading.Event()
+        failures = []
+
+        def monitor():
+            """Observe caller policy and stop only the already verified identity."""
+            while not stopped.wait(settings.STOP_POLL_SECONDS):
+                try:
+                    if not requested():
+                        continue
+                except Exception:
+                    failures.append(
+                        DockerOperationError("evaluate container stop condition")
+                    )
+                try:
+                    self.terminate()
+                except DockerOperationError:
+                    pass  # Creator close verifies cleanup and retains uncertain intent.
+                return
+
+        watcher = threading.Thread(target=monitor, daemon=True)
+        try:
+            watcher.start()
+        except Exception:
+            raise DockerOperationError("start container stop monitor") from None
+        try:
+            yield
+        finally:
+            stopped.set()
+            watcher.join()
+        if failures:
+            raise failures[0]
 
     def close(self) -> None:
         """Confirm removal and clear the receipt on the lifecycle creator thread.

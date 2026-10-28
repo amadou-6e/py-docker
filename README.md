@@ -202,6 +202,11 @@ types and their machine `code` for programmatic handling.
 `Images.resolve` raises `ImageResolutionError` when local inspection fails,
 without claiming that the image is missing. An observed pin mismatch remains
 `OwnershipConflictError`. Neither operation pulls or launches a container.
+`session.stop_on(predicate)` shares the exact-ID stop monitor with one-shot
+jobs. The caller decides when to stop and how that affects its workflow. The
+monitor never clears a receipt; close stays on the creator thread and confirms
+cleanup. A predicate failure stops the container and produces a safe library
+error, while an existing body failure and uncertain cleanup keep precedence.
 Container creation disables Docker config proxy injection and reads back the
 requested sandbox, process configuration, bind mounts and environment.
 

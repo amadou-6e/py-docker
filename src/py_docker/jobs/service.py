@@ -90,28 +90,10 @@ class Jobs:
         request = ContainerSession(
             spec=job.spec, limits=job.limits, receipt_path=job.receipt_path
         )
-        with Sessions(self._containers, self._execution).open(request) as session:
-            stopped = threading.Event()
-            watcher = None
-            if cancelled is not None:
-
-                def stop_on_request():
-                    """Stop only the observed owned ID; close must confirm the outcome."""
-                    while not stopped.wait(0.05):
-                        if cancelled.is_set():
-                            try:
-                                session.terminate()
-                            except DockerOperationError:
-                                pass  # Final creator-thread cleanup reports uncertainty.
-                            return
-
-                watcher = threading.Thread(target=stop_on_request, daemon=True)
-                try:
-                    watcher.start()
-                except Exception:
-                    raise DockerOperationError(
-                        "start job cancellation watcher"
-                    ) from None
+        with (
+            Sessions(self._containers, self._execution).open(request) as session,
+            session.stop_on(cancelled.is_set if cancelled is not None else None),
+        ):
             try:
                 stdout, stderr = bytearray(), bytearray()
                 while (frame := session.read_frame()) is not None:
@@ -130,7 +112,3 @@ class Jobs:
                 raise
             except Exception:
                 raise DockerOperationError("run one-shot container") from None
-            finally:
-                stopped.set()
-                if watcher is not None:
-                    watcher.join()
