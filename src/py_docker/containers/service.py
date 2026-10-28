@@ -43,16 +43,21 @@ class Containers:
             image = self.sdk.images.get(spec.image)
         except (DockerException, RequestException):
             raise DockerOperationError("resolve container image") from None
+        phase = "create container"
         try:
             container = self.sdk.containers.create(image.id, **options)
+            phase = "validate container receipt"
             identity = ContainerIdentity(id=container.id, name=spec.name, labels=labels)
+            phase = "verify container ownership"
             owned = self.inspect(identity)
             if owned is None:
                 raise DockerOperationError("confirm newly created container exists")
             self._verify_launch(owned, spec, image)
             return identity
-        except Exception:
-            raise CreationUnconfirmedError("create and verify container", receipt) from None
+        except Exception as error:
+            if isinstance(error, DockerOperationError):
+                phase = error.operation
+            raise CreationUnconfirmedError(phase, receipt) from None
 
     def _verify_launch(self, container, spec: ContainerSpec, image) -> None:
         from docker.utils import convert_volume_binds, parse_bytes
@@ -83,7 +88,8 @@ class Containers:
                 expected_value = expected_value or None
                 actual_value = config.get(key) or None
             else:
-                actual_value = config.get(key)
+                expected_value = expected_value or ""
+                actual_value = config.get(key) or ""
             if actual_value != expected_value:
                 raise OwnershipConflictError("verify container process configuration")
 

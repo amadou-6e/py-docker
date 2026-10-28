@@ -20,15 +20,16 @@ jobs:
       - run: python -m twine check dist/*
   real-linux:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: python -m pip install -e .[test]
-      - run: docker pull python:3.12-slim
+      - run: docker pull python@sha256:6b25cbe6577518889d553cdd5a5da97d259348d8f6e45b527dd731caaba27a07
       - run: python -m pytest -m integration -q
         env:
-          PY_DOCKER_TEST_IMAGE: python:3.12-slim
+          PY_DOCKER_TEST_IMAGE: python@sha256:6b25cbe6577518889d553cdd5a5da97d259348d8f6e45b527dd731caaba27a07
 # Publishing is intentionally absent until reviewed artifacts, name registration,
 # real integration checks and the new publisher identity are established.
