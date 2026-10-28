@@ -66,7 +66,9 @@ class CreationUnconfirmedError(DockerOperationError):
     code = "docker_creation_unconfirmed"
 
     def __init__(
-        self, operation: str, receipt: ContainerReservation | VolumeIdentity
+        self,
+        operation: str,
+        receipt: ContainerReservation | VolumeIdentity,
     ) -> None:
         """Retain the private receipt needed to reconcile uncertain creation."""
         self.receipt = receipt

@@ -8,10 +8,13 @@ from py_docker import Client
 from py_docker.containers.models import ContainerSpec
 
 with Client() as client:
-    identity = client.containers.create(ContainerSpec(
-        image="your-locally-installed-image", name="example-job",
-        command=["python", "--version"],
-    ))
+    identity = client.containers.create(
+        ContainerSpec(
+            image="your-locally-installed-image",
+            name="example-job",
+            command=["python", "--version"],
+        )
+    )
     try:
         client.containers.start(identity)
         result = client.sdk.containers.get(identity.id).wait(timeout=30)

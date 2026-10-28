@@ -12,7 +12,7 @@ license = "MIT"
 dependencies = ["docker>=7.2,<8", "requests>=2.32,<3", "pydantic>=2.13,<3", "pydantic-settings>=2.14.2,<3"]
 
 [project.optional-dependencies]
-test = ["pytest>=8", "ruff"]
+test = ["pytest>=8", "ruff==0.17.3"]
 
 [project.urls]
 Homepage = "https://github.com/amadou-6e/py-docker"

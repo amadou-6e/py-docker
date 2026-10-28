@@ -48,6 +48,8 @@ def test_python_modules_keep_cohesion_settings_and_method_order():
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 module = getattr(node, "module", None)
                 names = [alias.name for alias in node.names]
+                if module == "os" and set(names) & {"environ", "getenv"}:
+                    assert path.name == "settings.py", (path, node.lineno)
                 assert module not in {"dataclasses", "pydantic.dataclasses"}, path
                 assert not set(names) & {"dataclasses", "pydantic.dataclasses"}, path
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
@@ -67,7 +69,7 @@ def test_python_modules_keep_cohesion_settings_and_method_order():
             ranks = [
                 _method_rank(node)
                 for node in cls.body
-                if isinstance(node, ast.FunctionDef)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
             ]
             assert ranks == sorted(ranks), (path, cls.name)
 
@@ -79,12 +81,12 @@ def test_test_folder_uses_the_requested_prefix():
     assert not Path(root, "tests").exists()
 
 
-def _method_rank(node: ast.FunctionDef) -> int:
+def _method_rank(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
     """Classify dunders, properties, public methods and private helpers in order.
 
     Parameters
     ----------
-    node : ast.FunctionDef
+    node : ast.FunctionDef or ast.AsyncFunctionDef
         Class method, including class/static methods and property accessors.
 
     Returns

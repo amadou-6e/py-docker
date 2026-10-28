@@ -1,7 +1,7 @@
 # Engineering conventions
 
 This package follows the owner's `my-skills/05-software_engineering` guidance,
-audited at revision `678a922458ba34e76c58bbdedb105c17629e9ee3`.
+using guidance at skill revision `678a922458ba34e76c58bbdedb105c17629e9ee3`.
 The applicable code, refactoring and formatting sources are linked in AGENTS.md.
 Requirements, UI and experimentation workflows are applied when that work is
 actually requested; this library alignment does not invent a UI or experiment.
@@ -71,7 +71,10 @@ side effect. Hosted integration CI explicitly pulls its pinned test image.
 
 Ruff enforces import, formatting and NumPy docstring rules. Structural controls
 check described fields, model/settings placement, cohesion, method order,
-dataclasses, environment access and test layout. Boundary tests compare typed
+dataclasses, environment access and test layout. These guards are syntactic:
+field-description word counts cannot prove meaning, and the Path division check
+only detects direct construction and parent expressions, not every typed variable.
+Code review remains responsible for semantic documentation and indirect patterns. Boundary tests compare typed
 bind projections with the actual SDK conversion and check Client snapshot
 isolation. Internal controls and fault injection are distinct from real Docker
 acceptance. Neither category establishes a working Laomedo agent graph.

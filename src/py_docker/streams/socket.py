@@ -54,7 +54,7 @@ class AttachedStream:
         Raises
         ------
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            Detachment failed and there is no primary context exception to preserve.
         """
         try:
             self.close()
@@ -72,8 +72,12 @@ class AttachedStream:
 
         Raises
         ------
+        DeadlineError
+            The original stream deadline expired while reading; remote work may still be active.
+        OutputLimitError
+            The declared payload exceeds the remaining combined output allowance.
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            Framing is invalid, the frame is truncated, or the transport read failed.
         """
         header = self._read(settings.HEADER_SIZE, allow_eof=True)
         if not header:
@@ -91,7 +95,6 @@ class AttachedStream:
         )
 
     def write(self, data: bytes) -> None:
-        # SDK NpipeSocket.sendall does not loop partial writes; do so explicitly.
         """Write all request bytes using the original stream deadline.
 
         Parameters
@@ -101,9 +104,12 @@ class AttachedStream:
 
         Raises
         ------
+        DeadlineError
+            The original stream deadline expired before all bytes were written.
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            The transport write failed or stopped before all request bytes were sent.
         """
+        # SDK NpipeSocket.sendall does not loop partial writes; do so explicitly.
         with self._write_lock:
             offset = 0
             while offset < len(data):
@@ -126,7 +132,7 @@ class AttachedStream:
         Raises
         ------
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            The response or underlying socket failed to close; this does not stop remote work.
         """
         if not self._closed:
             self._closed = True
@@ -177,8 +183,10 @@ class AttachedStream:
 
         Raises
         ------
+        DeadlineError
+            The original stream deadline expired before the requested bytes arrived.
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            The transport failed or closed before the required frame bytes arrived.
         """
         result = bytearray(size)
         offset = 0

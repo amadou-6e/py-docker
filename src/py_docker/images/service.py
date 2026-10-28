@@ -38,7 +38,9 @@ class Images:
         Raises
         ------
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            The local image could not be inspected; no pull was attempted.
+        OwnershipConflictError
+            The locally resolved immutable image ID differs from expected_id.
         """
         try:
             image = self.sdk.images.get(reference)

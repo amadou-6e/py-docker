@@ -50,8 +50,10 @@ class Execution:
 
         Raises
         ------
+        OwnershipConflictError
+            Ownership inspection failed; no attachment was requested.
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            Inspection failed, the container is absent or uses TTY, or attachment failed.
         """
         container = self.containers.inspect(identity)
         if container is None or container.attrs.get("Config", {}).get("Tty"):
@@ -92,8 +94,14 @@ class Execution:
 
         Raises
         ------
+        OwnershipConflictError
+            Ownership inspection failed; no execution was requested.
+        DeadlineError
+            The acquired-stream deadline expired; execution may still be active.
+        OutputLimitError
+            Combined binary output exceeded the stream allowance; execution may still be active.
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            Inspection, execution, framing, transport or exit-status confirmation failed; reconcile before retrying.
         """
         if self.containers.inspect(identity) is None:
             raise DockerOperationError("execute in existing container")

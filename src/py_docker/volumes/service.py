@@ -77,7 +77,9 @@ class Volumes:
         Raises
         ------
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            Docker could not inspect the volume; absence is not confirmed.
+        OwnershipConflictError
+            The observed ownership labels differ from the receipt.
         """
         try:
             volume = self.sdk.volumes.get(identity.name)

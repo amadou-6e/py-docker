@@ -68,7 +68,9 @@ class Containers:
         Raises
         ------
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            Docker inspection failed; creation remains unconfirmed.
+        OwnershipConflictError
+            The observed name or ownership labels differ from the receipt.
         """
         try:
             container = self.sdk.containers.get(reservation.name)
@@ -100,6 +102,10 @@ class Containers:
 
         Raises
         ------
+        OwnershipConflictError
+            The reservation names a different container; no create request was sent.
+        DockerOperationError
+            The local image could not be resolved; no create request was sent.
         CreationUnconfirmedError
             Creation or readback is unconfirmed; reconcile the attached receipt before retrying.
         """
@@ -152,7 +158,9 @@ class Containers:
         Raises
         ------
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            Docker could not inspect the container; absence is not confirmed.
+        OwnershipConflictError
+            The observed ID, name or ownership labels differ from the receipt.
         """
         try:
             container = self.sdk.containers.get(identity.id)
@@ -183,8 +191,10 @@ class Containers:
 
         Raises
         ------
+        OwnershipConflictError
+            Ownership inspection failed; no start request was sent.
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            The container is absent, inspection failed, or the start outcome is unconfirmed.
         """
         container = self.inspect(identity)
         if container is None:
@@ -214,8 +224,10 @@ class Containers:
 
         Raises
         ------
+        OwnershipConflictError
+            Ownership inspection failed; no removal request follows that failed check.
         DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+            Inspection failed, removal failed, or readback still reports the owned container.
         """
         container = self.inspect(identity)
         if container is None:
@@ -245,8 +257,8 @@ class Containers:
 
         Raises
         ------
-        DockerOperationError
-            The operation cannot be confirmed; remote work may still be active.
+        OwnershipConflictError
+            Readback differs from the requested sandbox, mounts, environment or image configuration.
         """
         host = container.attrs.get("HostConfig", {})
         expected = {
