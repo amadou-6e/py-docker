@@ -1,80 +1,25 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "py-dockerdb"
-version = "1.0.0"
-description = "Provision Docker databases in Python — Postgres, Neo4j, MongoDB, MySQL, MSSQL with a unified one-call API"
-readme = { file = "README.md", content-type = "text/markdown" }
+name = "py-docker"
+version = "0.1.0a1"
+description = "Explicit Docker container lifecycle and bounded execution for Python"
+readme = "README.md"
 requires-python = ">=3.10"
-authors = [
-  { name = "Amadou Wolfgang Cisse", email = "amadou.6e@googlemail.com" }
-]
-dependencies = [
-  "psycopg2-binary",
-  "docker",
-  "pymongo",
-  "pydantic",
-  "pyodbc",
-  "mysql-connector-python",
-  "redis",
-  "opensearch-py",
-  "qdrant-client",
-  "pydos2unix",
-]
-classifiers = [
-  "Development Status :: 4 - Beta",
-  "Intended Audience :: Developers",
-  "Intended Audience :: Science/Research",
-  "License :: OSI Approved :: MIT License",
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Operating System :: OS Independent",
-  "Topic :: Database",
-  "Topic :: Scientific/Engineering :: Artificial Intelligence",
-  "Topic :: Software Development :: Libraries :: Python Modules",
-  "Topic :: System :: Systems Administration",
-]
-
-[project.urls]
-Homepage = "https://github.com/amadou-6e/docker-db.git"
+license = "MIT"
+dependencies = ["docker>=7.2,<8", "pydantic>=2.13,<3", "pydantic-settings>=2.14.2,<3"]
 
 [project.optional-dependencies]
-test = [
-  "pytest",
-  "pytest-timeout",
-  "nbclient",
-  "nbformat",
-  "ipykernel",
-  "pydocstyle",
-]
-graph = [
-  "neo4j",
-  "llama-index-graph-stores-neo4j",
-  "langchain-community",
-]
-rag = [
-  "llama-index",
-  "llama-index-vector-stores-postgres",
-  "llama-index-embeddings-langchain",
-  "langchain",
-  "langchain-community",
-  "sentence-transformers",
-]
+test = ["pytest>=8"]
 
-[tool.setuptools]
-include-package-data = true
+[project.urls]
+Homepage = "https://github.com/amadou-6e/py-docker"
 
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["docker_db*"]
+where = ["src"]
 
-[tool.setuptools.package-data]
-docker_db = ["tests/data/configs/*/*"]
-
-[tool.pydocstyle]
-convention = "numpy"
-match-dir = "(?!build|dist|\\.venv|\\.pytest_cache).*"
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: uses a real local Docker engine"]
