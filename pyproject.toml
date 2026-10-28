@@ -9,7 +9,7 @@ description = "Explicit Docker container lifecycle and bounded execution for Pyt
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-dependencies = ["docker>=7.2,<8", "pydantic>=2.13,<3", "pydantic-settings>=2.14.2,<3"]
+dependencies = ["docker>=7.2,<8", "requests>=2.32,<3", "pydantic>=2.13,<3", "pydantic-settings>=2.14.2,<3"]
 
 [project.optional-dependencies]
 test = ["pytest>=8"]

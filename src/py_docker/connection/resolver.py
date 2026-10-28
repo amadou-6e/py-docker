@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 from collections.abc import Mapping
+from urllib.parse import urlsplit
 
 from py_docker.connection.models import ResolvedConnection
 from py_docker.connection.settings import ConnectionSettings
@@ -32,6 +33,9 @@ class ConnectionResolver:
             endpoint = "npipe:////./pipe/docker_engine" if os.name == "nt" else "unix:///var/run/docker.sock"
             source = "platform-default"
         local = endpoint.startswith(("unix:///", "npipe:////./pipe/"))
+        parsed = urlsplit(endpoint)
+        if parsed.username is not None or parsed.password is not None or any(character.isspace() for character in endpoint):
+            raise ConnectionConfigurationError("select credential-free Docker endpoint")
         if not local and not (settings.allow_remote and endpoint.startswith("tcp://")):
             raise ConnectionConfigurationError("select supported Docker endpoint")
         return ResolvedConnection(endpoint=endpoint, source=source, local=local)
