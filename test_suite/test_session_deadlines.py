@@ -406,3 +406,32 @@ def test_actual_redirect_rechecks_send_without_losing_create_witness(monkeypatch
                 sdk.api.post("http://127.0.0.1:1/v1.45/containers/create")
         assert transport.call_count == 1 and budget.create_dispatched
         assert not isinstance(caught.value, CreateNotSentDeadlineError)
+
+
+@pytest.mark.parametrize("has_primary", [False, True])
+def test_context_exit_preserves_stored_cleanup_primary(
+    tmp_path, monkeypatch, has_primary
+):
+    """Context exit fills only missing safe primary evidence and repeat close keeps it."""
+    monkeypatch.setattr("time.monotonic", lambda: 100)
+    containers, execution, request = _runtime(tmp_path)
+    session = Sessions(containers, execution).open(
+        request, deadline=150, cleanup_seconds=5
+    )
+    original = (
+        DockerOperationError("controlled cleanup observation") if has_primary else None
+    )
+    cleanup = CleanupUnconfirmedError("controlled cleanup failure", primary=original)
+    body = DeadlineError("controlled body failure")
+    with patch.object(ReceiptStore, "cleanup", side_effect=cleanup):
+        with pytest.raises(CleanupUnconfirmedError) as caught:
+            session.__exit__(type(body), body, None)
+    expected = original if has_primary else body
+    assert caught.value is cleanup and cleanup.primary is expected
+    assert not session.cleanup_confirmed and request.receipt_path.exists()
+    with pytest.raises(CleanupUnconfirmedError) as repeated:
+        session.close()
+    assert repeated.value is cleanup and repeated.value.primary is expected
+    execution.attach.return_value.close.assert_called_once()
+    with ReceiptStore(request.receipt_path):
+        pass

@@ -28,3 +28,8 @@ The internal scope supports scalar or None request timeouts used by sessions;
 unsupported forms fail safely before sending. A transport inactivity timeout
 retains existing DockerOperationError mapping; only admission expiry guarantees
 DeadlineError. Live named-pipe/Docker controls remain a separate acceptance gate.
+
+The private scope is integrated by Sessions and Jobs. `Execution.run` in an
+already running container keeps its existing command `StreamLimits`; it is not
+called by either lifecycle and does not promise their absolute stream cap when
+someone manually binds this private scope. No public scope API is advertised.

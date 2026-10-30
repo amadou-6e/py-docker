@@ -75,7 +75,7 @@ class Session:
         try:
             self.close()
         except CleanupUnconfirmedError as error:
-            if isinstance(_[1], DockerOperationError):
+            if error.primary is None and isinstance(_[1], DockerOperationError):
                 error.primary = _[1]
             raise
 
