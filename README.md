@@ -34,6 +34,12 @@ Docker created the resource. Volume create errors likewise retain a receipt.
 
 ## Interactive container sessions
 
+The proposed optional deadline design is documented before implementation in
+the [session](src/py_docker/sessions/README.md),
+[connection](src/py_docker/connection/README.md) and
+[job](src/py_docker/jobs/README.md) interfaces. These marked proposals are not
+implemented or live-validated yet.
+
 `client.sessions.open(ContainerSession(spec=spec, limits=limits,
 receipt_path=private_state.joinpath("session.json")))` returns a creator-owned
 `Session`. Supply an immutable image ID, explicit stream limits and an existing
