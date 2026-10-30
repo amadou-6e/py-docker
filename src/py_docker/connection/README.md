@@ -4,7 +4,7 @@
 `DirectAPIClient` and `DirectDockerClient` remain beside endpoint settings and
 resolution so transport behavior is discoverable without session internals.
 
-## Proposed deadline admission (implementation pending)
+## Optional deadline admission
 
 `RequestBudget` is the canonical Pydantic absolute monotonic deadline and private
 create-dispatch witness. `remaining_seconds(now)` refuses expiry and
@@ -23,3 +23,8 @@ version negotiation and calls outside a session scope retain existing settings.
 This is admission plus socket inactivity timeout control, not a hard wall-clock
 deadline: trickling responses and named-pipe busy retries may overrun. No timer,
 worker, provider knowledge, credential handling or implicit retry belongs here.
+
+The internal scope supports scalar or None request timeouts used by sessions;
+unsupported forms fail safely before sending. A transport inactivity timeout
+retains existing DockerOperationError mapping; only admission expiry guarantees
+DeadlineError. Live named-pipe/Docker controls remain a separate acceptance gate.

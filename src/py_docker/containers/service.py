@@ -20,6 +20,7 @@ from py_docker.containers.models import (
 from py_docker.containers.settings import DEFINITIVE_CREATE_REJECTIONS
 from py_docker.containers.watch import ContainerWatch
 from py_docker.errors import (
+    CreateNotSentDeadlineError,
     CreationRejectedError,
     CreationUnconfirmedError,
     DockerOperationError,
@@ -181,7 +182,7 @@ class Containers:
                 raise DockerOperationError("confirm newly created container exists")
             self._verify_launch(owned, spec, image)
             return identity
-        except CreationRejectedError:
+        except (CreationRejectedError, CreateNotSentDeadlineError):
             raise
         except Exception as error:
             if isinstance(error, DockerOperationError):

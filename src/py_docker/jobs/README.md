@@ -4,9 +4,9 @@
 `Sessions.open` lifecycle; `recover(receipt_path)` reconciles its exact journal.
 Jobs compose sessions and never duplicate create/attach/start/cleanup behavior.
 
-## Proposed optional deadline forwarding (implementation pending)
+## Optional deadline forwarding
 
-`run` will accept keyword-only `deadline=None, cleanup_seconds=None`, forwarded
+`run` accepts keyword-only `deadline=None, cleanup_seconds=None`, forwarded
 unchanged to `Sessions.open`. Omission preserves current behavior and schemas.
 An already requested cancellation retains its existing precedence over option
 validation. Cancellation still overrides a normal Docker failure when requested;

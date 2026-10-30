@@ -5,7 +5,7 @@ attaches, then starts once. `Session` owns its stream and receipt lock until
 creator-thread `close`; generic ownership recovery remains in `ReceiptStore`.
 No provider or authentication policy belongs to this package.
 
-## Proposed optional deadline interface (implementation pending)
+## Optional deadline interface
 
 `open(request, *, deadline=None, cleanup_seconds=None)` keeps today's behavior
 when both options are omitted. An explicit absolute monotonic deadline requires
@@ -28,3 +28,7 @@ close may conservatively retain a receipt for an already absent container.
 No Engine send is admitted once its scope expires. Socket inactivity timeouts,
 trickling responses and named-pipe connect retries prevent a finite wall-time
 guarantee. Closing a client is not proof of aborting daemon work.
+
+Regression controls exercise admission, hidden create readback, redirects and
+cleanup binding failures internally. They do not establish real Docker or
+application acceptance; those remain required before release.

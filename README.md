@@ -34,11 +34,14 @@ Docker created the resource. Volume create errors likewise retain a receipt.
 
 ## Interactive container sessions
 
-The proposed optional deadline design is documented before implementation in
+The optional deadline interface is documented in
 the [session](src/py_docker/sessions/README.md),
 [connection](src/py_docker/connection/README.md) and
-[job](src/py_docker/jobs/README.md) interfaces. These marked proposals are not
-implemented or live-validated yet.
+[job](src/py_docker/jobs/README.md) interfaces. Pass both `deadline` (absolute
+monotonic time) and `cleanup_seconds` to `sessions.open` or `jobs.run` to opt in.
+Default omission preserves existing behavior. This admission/inactivity contract
+is implemented with internal regression controls; real Docker acceptance remains
+separate. It does not promise a hard wall-clock bound or abort remote work.
 
 `client.sessions.open(ContainerSession(spec=spec, limits=limits,
 receipt_path=private_state.joinpath("session.json")))` returns a creator-owned

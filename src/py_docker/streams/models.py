@@ -61,7 +61,9 @@ class StreamBudget(BaseModel):
     )
 
     @classmethod
-    def from_limits(cls, limits: StreamLimits, now: float) -> "StreamBudget":
+    def from_limits(
+        cls, limits: StreamLimits, now: float, *, deadline: float | None = None
+    ) -> "StreamBudget":
         """Initialize state from a validated request and a clock reading.
 
         Parameters
@@ -70,13 +72,19 @@ class StreamBudget(BaseModel):
             Requested stream lifetime and combined payload allowance.
         now : float
             Monotonic-clock reading in seconds at stream acquisition.
+        deadline : float or None
+            Optional earlier absolute session deadline, never extended at acquisition.
 
         Returns
         -------
         StreamBudget
             Mutable state owned exclusively by the acquired stream.
         """
-        return cls(deadline=now + limits.seconds, remaining_bytes=limits.max_bytes)
+        until = now + limits.seconds
+        return cls(
+            deadline=min(until, deadline) if deadline is not None else until,
+            remaining_bytes=limits.max_bytes,
+        )
 
     def remaining_seconds(self, now: float) -> float:
         """Calculate remaining lifetime without extending the deadline.
