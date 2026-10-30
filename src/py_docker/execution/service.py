@@ -6,6 +6,7 @@ from docker import DockerClient
 from docker.errors import DockerException
 from requests.exceptions import RequestException
 
+from py_docker.connection.deadline import RequestDeadlineScope
 from py_docker.containers.models import ContainerIdentity
 from py_docker.containers.service import Containers
 from py_docker.errors import DockerOperationError
@@ -71,7 +72,20 @@ class Execution:
             )
         except (DockerException, RequestException):
             raise DockerOperationError("attach container") from None
-        return AttachedStream(raw, limits)
+        budget = RequestDeadlineScope.current(self.sdk.api)
+        stream = AttachedStream(
+            raw, limits, deadline=budget.deadline if budget else None
+        )
+        try:
+            if budget:
+                budget.remaining_seconds(time.monotonic())
+        except DockerOperationError:
+            try:
+                stream.close()
+            except DockerOperationError:
+                pass
+            raise
+        return stream
 
     def run(
         self, identity: ContainerIdentity, command: list[str], limits: StreamLimits

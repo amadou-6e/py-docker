@@ -23,13 +23,19 @@ class AttachedStream:
         SDK-specific acquired Unix SocketIO or Windows named-pipe handle; no ownership transfer beyond close.
     limits : StreamLimits
         Validated combined output-byte limit and acquired-stream lifetime.
+    deadline : float or None
+        Optional absolute monotonic cap, never extended by stream acquisition.
     """
 
-    def __init__(self, raw: Any, limits: StreamLimits) -> None:
+    def __init__(
+        self, raw: Any, limits: StreamLimits, *, deadline: float | None = None
+    ) -> None:
         """Acquire the socket adapter and initialize its private stream budget."""
         self._raw = raw
         self._socket = getattr(raw, "_sock", raw)
-        self._budget = StreamBudget.from_limits(limits, time.monotonic())
+        self._budget = StreamBudget.from_limits(
+            limits, time.monotonic(), deadline=deadline
+        )
         self._write_lock = threading.Lock()
         self._closed = False
 

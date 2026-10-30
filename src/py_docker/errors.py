@@ -57,9 +57,17 @@ class OutputLimitError(DockerOperationError):
 
 
 class DeadlineError(DockerOperationError):
-    """A stream deadline expired; remote work may still be running."""
+    """A stream or scoped request deadline expired; remote work may remain."""
 
     code = "docker_deadline_exceeded"
+
+
+class CreateNotSentDeadlineError(DeadlineError):
+    """The first container-create POST was refused before SDK send admission.
+
+    This narrower outcome permits clearing only the exact unstarted intent.
+    Never raise it after any create POST was admitted, including redirects.
+    """
 
 
 class JobCancelledError(DockerOperationError):

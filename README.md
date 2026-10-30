@@ -27,12 +27,25 @@ replaces an existing named container. Removal validates ID, name and ownership
 labels. The SDK remains available as `client.sdk` for other Engine operations;
 operations through that escape hatch have the SDK's own contracts.
 
+Use `ContainerSpec(log_driver="none", ...)` when container logging must be disabled.
+An explicit driver is verified against Engine readback before start; omission keeps
+the daemon's existing policy. See the [container interface](src/py_docker/containers/README.md).
+
 For recoverable creation, call `reservation = client.containers.reserve(spec)`
 before `create(spec, reservation)`. A `CreationUnconfirmedError` also carries
 its private receipt. Reconcile that receipt before retrying; a timeout may mean
 Docker created the resource. Volume create errors likewise retain a receipt.
 
 ## Interactive container sessions
+
+The optional deadline interface is documented in
+the [session](src/py_docker/sessions/README.md),
+[connection](src/py_docker/connection/README.md) and
+[job](src/py_docker/jobs/README.md) interfaces. Pass both `deadline` (absolute
+monotonic time) and `cleanup_seconds` to `sessions.open` or `jobs.run` to opt in.
+Default omission preserves existing behavior. This admission/inactivity contract
+is implemented with internal regression controls; real Docker acceptance remains
+separate. It does not promise a hard wall-clock bound or abort remote work.
 
 `client.sessions.open(ContainerSession(spec=spec, limits=limits,
 receipt_path=private_state.joinpath("session.json")))` returns a creator-owned

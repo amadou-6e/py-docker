@@ -53,7 +53,12 @@ class Jobs:
             store.recover(self._containers)
 
     def run(
-        self, job: ContainerJob, *, cancelled: threading.Event | None = None
+        self,
+        job: ContainerJob,
+        *,
+        cancelled: threading.Event | None = None,
+        deadline: float | None = None,
+        cleanup_seconds: float | None = None,
     ) -> CommandResult:
         """Collect one job, stopping its exact owned container on cancellation.
 
@@ -63,6 +68,10 @@ class Jobs:
             Immutable launch, stream/wait bounds and private durable receipt.
         cancelled : threading.Event or None
             Optional caller-owned stop signal. A pre-set event sends no launch.
+        deadline : float or None
+            Optional absolute monotonic deadline forwarded to the shared session.
+        cleanup_seconds : float or None
+            Separate cleanup reserve required with deadline; cancellation is checked first.
 
         Returns
         -------
@@ -91,7 +100,9 @@ class Jobs:
             spec=job.spec, limits=job.limits, receipt_path=job.receipt_path
         )
         with (
-            Sessions(self._containers, self._execution).open(request) as session,
+            Sessions(self._containers, self._execution).open(
+                request, deadline=deadline, cleanup_seconds=cleanup_seconds
+            ) as session,
             session.stop_on(cancelled.is_set if cancelled is not None else None),
         ):
             try:

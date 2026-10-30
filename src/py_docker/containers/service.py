@@ -8,6 +8,7 @@ from docker import DockerClient
 from docker.errors import APIError, DockerException, NotFound
 from docker.models.containers import Container
 from docker.models.images import Image
+from docker.types import LogConfig
 from docker.utils import convert_volume_binds, parse_bytes
 from requests.exceptions import RequestException
 
@@ -20,6 +21,7 @@ from py_docker.containers.models import (
 from py_docker.containers.settings import DEFINITIVE_CREATE_REJECTIONS
 from py_docker.containers.watch import ContainerWatch
 from py_docker.errors import (
+    CreateNotSentDeadlineError,
     CreationRejectedError,
     CreationUnconfirmedError,
     DockerOperationError,
@@ -152,7 +154,11 @@ class Containers:
         labels = {
             key: value.get_secret_value() for key, value in receipt.labels.items()
         }
-        options = spec.model_dump(exclude={"image", "environment", "labels"})
+        options = spec.model_dump(
+            exclude={"image", "environment", "labels", "log_driver"}
+        )
+        if spec.log_driver is not None:
+            options["log_config"] = LogConfig(type=spec.log_driver)
         options["volumes"] = spec.sdk_volumes()
         options["mounts"] = [mount.to_sdk() for mount in spec.mounts]
         options["ports"] = spec.sdk_ports()
@@ -181,7 +187,7 @@ class Containers:
                 raise DockerOperationError("confirm newly created container exists")
             self._verify_launch(owned, spec, image)
             return identity
-        except CreationRejectedError:
+        except (CreationRejectedError, CreateNotSentDeadlineError):
             raise
         except Exception as error:
             if isinstance(error, DockerOperationError):
@@ -431,6 +437,11 @@ class Containers:
             Readback differs from the requested sandbox, mounts, environment or image configuration.
         """
         host = container.attrs.get("HostConfig", {})
+        logging = host.get("LogConfig")
+        if spec.log_driver is not None and (
+            not isinstance(logging, dict) or logging.get("Type") != spec.log_driver
+        ):
+            raise OwnershipConflictError("verify requested container log driver")
         expected = {
             "NetworkMode": spec.network_mode,
             "ReadonlyRootfs": spec.read_only,

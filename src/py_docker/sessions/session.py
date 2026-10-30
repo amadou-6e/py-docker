@@ -1,10 +1,12 @@
 """An owned binary interactive session; detachment never proves termination."""
 
 import threading
+import time
 from collections import deque
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
+from py_docker.connection.deadline import RequestDeadlineScope
 from py_docker.containers.models import (
     ContainerIdentity,
     ContainerReservation,
@@ -14,6 +16,7 @@ from py_docker.containers.receipts import ReceiptStore
 from py_docker.containers.service import Containers
 from py_docker.errors import CleanupUnconfirmedError, DockerOperationError
 from py_docker.sessions import settings
+from py_docker.sessions.models import SessionDeadline
 from py_docker.streams.models import Frame, Line
 from py_docker.streams.socket import AttachedStream
 
@@ -33,6 +36,8 @@ class Session:
         Verified immutable ID durably recorded before attachment.
     stream : AttachedStream
         Acquired bounded non-TTY attachment, established before start.
+    deadline : SessionDeadline or None
+        Optional normal deadline and the one distinct cleanup reserve.
     """
 
     def __init__(
@@ -42,6 +47,7 @@ class Session:
         reservation: ContainerReservation,
         identity: ContainerIdentity,
         stream: AttachedStream,
+        deadline: SessionDeadline | None = None,
     ) -> None:
         """Retain the open lifecycle without acquiring another Docker session."""
         self._containers = containers
@@ -49,6 +55,7 @@ class Session:
         self._reservation = reservation
         self.identity = identity
         self._stream = stream
+        self._deadline = deadline
         self._creator = threading.get_ident()
         self._termination_lock = threading.Lock()
         self._closed = False
@@ -68,7 +75,7 @@ class Session:
         try:
             self.close()
         except CleanupUnconfirmedError as error:
-            if isinstance(_[1], DockerOperationError):
+            if error.primary is None and isinstance(_[1], DockerOperationError):
                 error.primary = _[1]
             raise
 
@@ -162,7 +169,11 @@ class Session:
         ContainerState
             Ownership-verified state of the observed immutable ID.
         """
-        return self._containers.state(self.identity)
+        with self._scope():
+            result = self._containers.state(self.identity)
+            if self._deadline:
+                self._deadline.normal.remaining_seconds(time.monotonic())
+            return result
 
     def wait(self, timeout: float) -> int:
         """Confirm the process exit using a separate bounded wait request.
@@ -177,7 +188,11 @@ class Session:
         int
             Confirmed exit code; removal alone cannot provide one.
         """
-        return self._containers.wait(self.identity, timeout=timeout)
+        with self._scope():
+            result = self._containers.wait(self.identity, timeout=timeout)
+            if self._deadline:
+                self._deadline.normal.remaining_seconds(time.monotonic())
+            return result
 
     def terminate(self) -> None:
         """Remove the exact owned ID from any thread without touching its receipt.
@@ -188,7 +203,8 @@ class Session:
             Ownership, removal or absence cannot be confirmed.
         """
         with self._termination_lock:
-            self._containers.remove(self.identity, force=True)
+            with self._scope(cleanup=True):
+                self._containers.remove(self.identity, force=True)
 
     @contextmanager
     def stop_on(self, requested: Callable[[], bool] | None) -> Iterator[None]:
@@ -268,23 +284,53 @@ class Session:
         error = None
         try:
             with self._termination_lock:
-                self._store.cleanup(self._containers, self._reservation, self.identity)
-        except CleanupUnconfirmedError as failure:
-            error = failure
+                with self._scope(cleanup=True):
+                    self._store.cleanup(
+                        self._containers, self._reservation, self.identity
+                    )
+        except Exception as failure:
+            error = (
+                failure
+                if isinstance(failure, CleanupUnconfirmedError)
+                else CleanupUnconfirmedError(
+                    "bind or complete session cleanup", self._reservation
+                )
+            )
+            if isinstance(failure, DockerOperationError) and failure is not error:
+                error.primary = failure
         finally:
             try:
                 self._stream.close()
-            except DockerOperationError as failure:
-                error = error or failure
+            except Exception as failure:
+                error = error or (
+                    failure
+                    if isinstance(failure, DockerOperationError)
+                    else DockerOperationError("close session stream")
+                )
             try:
                 self._store.__exit__(type(error) if error else None, error, None)
-            except DockerOperationError as failure:
-                error = error or failure
+            except Exception as failure:
+                error = error or (
+                    failure
+                    if isinstance(failure, DockerOperationError)
+                    else DockerOperationError("release session receipt")
+                )
             self._closed = True
             self._cleanup_confirmed = error is None
             self._close_error = error
         if error is not None:
             raise error
+
+    def _scope(self, *, cleanup: bool = False):
+        """Bind normal admission or the one cleanup reserve on this caller thread."""
+        if self._deadline is None:
+            return nullcontext()
+        budget = (
+            self._deadline.cleanup_budget(time.monotonic())
+            if cleanup
+            else self._deadline.normal
+        )
+        return RequestDeadlineScope(self._containers.sdk.api, budget)
 
     def _select_reader(self, mode: str) -> None:
         """Keep buffering canonical by refusing a change of read mode."""

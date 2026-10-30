@@ -1,9 +1,15 @@
 """SDK extension isolates Docker connections from ambient HTTP proxy settings."""
 
+import re
+import time
 from typing import Any
+from urllib.parse import urlsplit
 
 from docker import APIClient, DockerClient
-from requests import Response
+from requests import PreparedRequest, Response
+
+from py_docker.connection.deadline import RequestDeadlineScope
+from py_docker.errors import CreateNotSentDeadlineError, DeadlineError
 
 
 class DirectAPIClient(APIClient):
@@ -26,6 +32,40 @@ class DirectAPIClient(APIClient):
         """
         self.trust_env = False
         return super().request(*args, **kwargs)
+
+    def send(self, request: PreparedRequest, **kwargs: Any) -> Response:
+        """Admit each scoped send, including direct attach and redirect requests.
+
+        Parameters
+        ----------
+        request : PreparedRequest
+            SDK-prepared request; contents are never retained in diagnostics.
+        kwargs : dict
+            Per-call options, with scalar inactivity timeout clamped when scoped.
+
+        Returns
+        -------
+        Response
+            SDK response; inactivity limits do not prove a wall-time bound.
+        """
+        budget = RequestDeadlineScope.current(self)
+        if budget is not None:
+            create = request.method == "POST" and bool(
+                re.fullmatch(
+                    r"/(?:v[0-9.]+/)?containers/create", urlsplit(request.url).path
+                )
+            )
+            try:
+                kwargs["timeout"] = budget.timeout_seconds(
+                    kwargs.get("timeout"), self.timeout, time.monotonic()
+                )
+            except DeadlineError:
+                if create and not budget.create_dispatched:
+                    raise CreateNotSentDeadlineError("admit container create") from None
+                raise
+            if create:
+                budget.create_dispatched = True
+        return super().send(request, **kwargs)
 
 
 class DirectDockerClient(DockerClient):
