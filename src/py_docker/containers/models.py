@@ -167,6 +167,12 @@ class ContainerSpec(BaseModel):
         default=settings.DEFAULT_NETWORK_MODE,
         description="Docker network mode; the default disables container networking.",
     )
+    log_driver: str | None = Field(
+        default=None,
+        min_length=1,
+        exclude_if=lambda value: value is None,
+        description="Optional explicit logging driver; None preserves daemon policy.",
+    )
     cap_drop: list[str] = Field(
         default_factory=lambda: list(settings.DEFAULT_CAP_DROP),
         description="Linux capabilities removed from the container; defaults to all.",

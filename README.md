@@ -27,6 +27,10 @@ replaces an existing named container. Removal validates ID, name and ownership
 labels. The SDK remains available as `client.sdk` for other Engine operations;
 operations through that escape hatch have the SDK's own contracts.
 
+Use `ContainerSpec(log_driver="none", ...)` when container logging must be disabled.
+An explicit driver is verified against Engine readback before start; omission keeps
+the daemon's existing policy. See the [container interface](src/py_docker/containers/README.md).
+
 For recoverable creation, call `reservation = client.containers.reserve(spec)`
 before `create(spec, reservation)`. A `CreationUnconfirmedError` also carries
 its private receipt. Reconcile that receipt before retrying; a timeout may mean

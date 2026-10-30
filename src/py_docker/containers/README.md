@@ -7,7 +7,7 @@ creates once and verifies sandbox readback before returning an identity. `inspec
 retains endpoint/reservation/observed identity; it does not fingerprint or persist
 the complete launch policy. Ownership and uncertain-create recovery are unchanged.
 
-## Proposed explicit log driver (implementation pending)
+## Explicit log driver
 
 `ContainerSpec.log_driver` is an optional driver name, without a hardcoded driver
 catalogue or a broad log-option API. None/omission preserves previous model/native
@@ -24,4 +24,6 @@ exact ownership cleanup path. It never silently accepts daemon fallback logging.
 This capability was found missing while preparing credential-free controls: the
 earlier mirror design assumed `logging=none`, but the actual spec could not request
 it. No control container was launched to work around that gap. Real Docker controls
-remain pending the implementation and focused review of this addition.
+remain pending focused review of this addition. Internal regression controls cover
+omitted policy, arbitrary driver projection, exact readback and mismatch cleanup;
+these controls do not establish real Docker acceptance.
